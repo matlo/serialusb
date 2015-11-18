@@ -8,12 +8,7 @@
 #include <LUFA/Drivers/Peripheral/Serial.h>
 #include "../protocol.h"
 
-#define LED_CONFIG  (DDRD |= (1<<6))
-#define LED_OFF   (PORTD &= ~(1<<6))
-#define LED_ON    (PORTD |= (1<<6))
-
 #define MAX_CONTROL_TRANSFER_SIZE 64
-#define MAX_EP_SIZE 64
 
 #define USART_BAUDRATE 500000
 #define USART_DOUBLE_SPEED false
@@ -22,25 +17,12 @@
  * This is a block of memory to store all descriptors.
  */
 static uint8_t descriptors[1024]; // there should not be more than 254 descriptors
-static struct __attribute__((packed)) {
-    uint8_t type;
-    uint8_t number;
-    uint8_t offset;
-    uint16_t size;
-} descIndex[32]; // 32 x 5 = 160 bytes (should not exceed 254 bytes)
-static struct __attribute__((packed)) {
-    uint8_t number; // 0 means end of table
-    uint8_t type;
-    uint8_t size;
-} endpoints[16]; // 48 bytes
+static s_descIndex descIndex[32]; // 32 x 5 = 160 bytes (should not exceed 254 bytes)
+static s_endpoint endpoints[16]; // 48 bytes
 
 static uint8_t * pdesc = descriptors;
 
-static struct __attribute__((packed)) {
-    uint8_t endpoint; // 0 means nothing to send
-    uint8_t size;
-    uint8_t data[MAX_EP_SIZE];
-} input; // 66 bytes (should not exceed 255 bytes)
+static s_input input; // 66 bytes (should not exceed 255 bytes)
 
 static uint8_t * pdata;
 static unsigned char i = 0;
@@ -55,9 +37,8 @@ static volatile unsigned char value_len = 0;
 static volatile unsigned char controlReply = 0;
 static volatile unsigned char controlReplyLen = 0;
 
-void forceHardReset(void) {
+static void forceHardReset(void) {
 
-    LED_ON;
     cli(); // disable interrupts
     wdt_enable(WDTO_15MS); // enable watchdog
     while(1); // wait for watchdog to reset processor
@@ -75,7 +56,7 @@ static inline void send_control_header(void) {
     if( !(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) ) {
         len += (USB_ControlRequest.wLength & 0xFF);
     }
-    Serial_SendByte(BYTE_CONTROL);
+    Serial_SendByte(E_TYPE_CONTROL);
     Serial_SendByte(len);
     Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
 }
@@ -89,24 +70,21 @@ static inline void ack(uint8_t type) {
 static inline void handle_packet(void) {
 
     switch (packet_type) {
-    case BYTE_DESCRIPTORS:
+    case E_TYPE_DESCRIPTORS:
         pdesc += value_len;
-        ack(packet_type);
+        ack(E_TYPE_DESCRIPTORS);
         break;
-    case BYTE_ENDPOINTS:
-        ack(packet_type);
-        break;
-    case BYTE_START:
-        ack(packet_type);
+    case E_TYPE_ENDPOINTS:
+        ack(E_TYPE_ENDPOINTS);
         started = 1;
         break;
-    case BYTE_CONTROL:
+    case E_TYPE_CONTROL:
         controlReply = 1;
         controlReplyLen = value_len;
         break;
-    case BYTE_IN:
+    case E_TYPE_IN:
         break;
-    case BYTE_RESET:
+    case E_TYPE_RESET:
         forceHardReset();
         break;
     }
@@ -118,21 +96,23 @@ ISR(USART1_RX_vect) {
 
     packet_type = UDR1;
     value_len = Serial_BlockingReceiveByte();
-    // start with highest priority types
-    if (packet_type == BYTE_CONTROL) {
+    switch(packet_type) {
+    default:
+    case E_TYPE_CONTROL:
         pdata = buf;
-    }
-    else if (packet_type == BYTE_IN) {
+        break;
+    case E_TYPE_IN:
         pdata = (uint8_t*)&input;
-    }
-    else if (packet_type == BYTE_ENDPOINTS) {
+        break;
+    case E_TYPE_ENDPOINTS:
         pdata = (uint8_t*)&endpoints;
-    }
-    else if (packet_type == BYTE_INDEX) {
+        break;
+    case E_TYPE_INDEX:
         pdata = (uint8_t*)&descIndex;
-    }
-    else if (packet_type == BYTE_DESCRIPTORS) {
+        break;
+    case E_TYPE_DESCRIPTORS:
         pdata = pdesc;
+        break;
     }
     while (i < value_len) {
         pdata[i++] = Serial_BlockingReceiveByte();
@@ -159,8 +139,6 @@ void SetupHardware(void) {
     serial_init();
 
     GlobalInterruptEnable();
-
-    LED_CONFIG;
 
     LEDs_Init();
 
@@ -243,7 +221,7 @@ void SendNextInput(void) {
 
         input.endpoint = 0;
 
-        ack(BYTE_IN);
+        ack(E_TYPE_IN);
     }
 }
 
@@ -263,7 +241,7 @@ void ReceiveNextOutput(void) {
                     unsigned char length;
                 } header;
                 unsigned char buffer[MAX_EP_SIZE];
-            } packet = { .header.type = BYTE_OUT };
+            } packet = { .header.type = E_TYPE_OUT };
 
             uint16_t length = 0;
 

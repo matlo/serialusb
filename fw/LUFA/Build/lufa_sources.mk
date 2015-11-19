@@ -86,7 +86,7 @@ LUFA_SRC_USB_COMMON      := $(LUFA_ROOT_PATH)/Drivers/USB/Core/$(ARCH)/USBContro
                             $(LUFA_ROOT_PATH)/Drivers/USB/Core/ConfigDescriptors.c               \
                             $(LUFA_ROOT_PATH)/Drivers/USB/Core/Events.c                          \
                             $(LUFA_ROOT_PATH)/Drivers/USB/Core/USBTask.c                         \
-                            $(LUFA_ROOT_PATH)/Drivers/USB/Class/Common/HIDParser.c               \
+#                            $(LUFA_ROOT_PATH)/Drivers/USB/Class/Common/HIDParser.c               \
 
 LUFA_SRC_USB_HOST        := $(LUFA_ROOT_PATH)/Drivers/USB/Core/$(ARCH)/Host_$(ARCH).c            \
                             $(LUFA_ROOT_PATH)/Drivers/USB/Core/$(ARCH)/Pipe_$(ARCH).c            \

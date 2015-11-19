@@ -6,6 +6,14 @@
 #ifndef _PROTOCOL_H_
 #define _PROTOCOL_H_
 
+#define MAX_DESCRIPTORS 32 // code is optimized when MAX_DESCRIPTORS <= 255 / 5
+
+#if MAX_DESCRIPTORS > 255 / 5
+#define uintDescIndex uint16_t
+#else
+#define uintDescIndex uint8_t
+#endif
+
 #define MAX_EP_SIZE 64
 
 typedef struct __attribute__((packed)) {

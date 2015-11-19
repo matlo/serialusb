@@ -16,28 +16,27 @@
 /*
  * This is a block of memory to store all descriptors.
  */
-static uint8_t descriptors[1024]; // there should not be more than 254 descriptors
-static s_descIndex descIndex[32]; // 32 x 5 = 160 bytes (should not exceed 254 bytes)
+static uint8_t descriptors[1024];
+static s_descIndex descIndex[MAX_DESCRIPTORS]; // MAX_DESCRIPTORS x 5 bytes
 static s_endpoint endpoints[16]; // 48 bytes
 
 static uint8_t * pdesc = descriptors;
 
-static s_input input; // 66 bytes (should not exceed 255 bytes)
+#if MAX_DESCRIPTORS > 255 / 5
+static uint8_t * pindex = descIndex;
+#endif
 
-static uint8_t * pdata;
-static unsigned char i = 0;
+static s_input input; // 66 bytes (should not exceed 255 bytes)
 
 /*
  * These variables are used in both the main and serial interrupt,
  * therefore they have to be declared as volatile.
  */
 static volatile unsigned char started = 0;
-static volatile unsigned char packet_type = 0;
-static volatile unsigned char value_len = 0;
 static volatile unsigned char controlReply = 0;
 static volatile unsigned char controlReplyLen = 0;
 
-static void forceHardReset(void) {
+static inline void forceHardReset(void) {
 
     cli(); // disable interrupts
     wdt_enable(WDTO_15MS); // enable watchdog
@@ -61,64 +60,62 @@ static inline void send_control_header(void) {
     Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
 }
 
-static inline void ack(uint8_t type) {
+static unsigned char buf[MAX_CONTROL_TRANSFER_SIZE];
 
+#define READ_VALUE_INC(TARGET) \
+    while (value_len--) { \
+        *(TARGET++) = Serial_BlockingReceiveByte(); \
+    }
+
+#define READ_VALUE(TARGET) \
+    { \
+        unsigned char * ptr = TARGET; \
+        READ_VALUE_INC(ptr) \
+    }
+
+static inline void ack(const unsigned char type) {
     Serial_SendByte(type);
     Serial_SendByte(BYTE_LEN_0_BYTE);
 }
 
-static inline void handle_packet(void) {
-
-    switch (packet_type) {
-    case E_TYPE_DESCRIPTORS:
-        pdesc += value_len;
-        ack(E_TYPE_DESCRIPTORS);
-        break;
-    case E_TYPE_ENDPOINTS:
-        ack(E_TYPE_ENDPOINTS);
-        started = 1;
-        break;
-    case E_TYPE_CONTROL:
-        controlReply = 1;
-        controlReplyLen = value_len;
-        break;
-    case E_TYPE_IN:
-        break;
-    case E_TYPE_RESET:
-        forceHardReset();
-        break;
-    }
-}
-
-static unsigned char buf[MAX_CONTROL_TRANSFER_SIZE];
 
 ISR(USART1_RX_vect) {
 
-    packet_type = UDR1;
-    value_len = Serial_BlockingReceiveByte();
-    switch(packet_type) {
-    default:
-    case E_TYPE_CONTROL:
-        pdata = buf;
-        break;
-    case E_TYPE_IN:
-        pdata = (uint8_t*)&input;
-        break;
-    case E_TYPE_ENDPOINTS:
-        pdata = (uint8_t*)&endpoints;
-        break;
-    case E_TYPE_INDEX:
-        pdata = (uint8_t*)&descIndex;
-        break;
-    case E_TYPE_DESCRIPTORS:
-        pdata = pdesc;
-        break;
+    unsigned char packet_type = UDR1;
+    unsigned char value_len = Serial_BlockingReceiveByte();
+    static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_in };
+    if(packet_type > E_TYPE_IN) {
+        return;
     }
-    while (i < value_len) {
-        pdata[i++] = Serial_BlockingReceiveByte();
-    }
-    i = 0;
-    handle_packet();
+    goto *labels[packet_type];
+    l_descriptors:
+    READ_VALUE_INC(pdesc)
+    ack(E_TYPE_DESCRIPTORS);
+    return;
+    l_index:
+#if MAX_DESCRIPTORS > 255 / 5
+    READ_VALUE_INC(pindex)
+#else
+    READ_VALUE((uint8_t*)&descIndex)
+#endif
+    ack(E_TYPE_INDEX);
+    return;
+    l_endpoints:
+    READ_VALUE((uint8_t*)&endpoints)
+    ack(E_TYPE_ENDPOINTS);
+    started = 1;
+    return;
+    l_reset:
+    forceHardReset();
+    return;
+    l_control:
+    controlReplyLen = value_len;
+    READ_VALUE(buf)
+    controlReply = 1;
+    return;
+    l_in:
+    READ_VALUE((uint8_t*)&input)
+    return;
 }
 
 void serial_init(void) {
@@ -172,8 +169,8 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue, const uint8_t wIndex,
     const uint8_t DescriptorType = (wValue >> 8);
     const uint8_t DescriptorNumber = (wValue & 0xFF);
 
-    uint8_t i;
-    for (i = 0; i < sizeof(descIndex) / sizeof(*descIndex); ++i) {
+    uintDescIndex i;
+    for (i = 0; i < sizeof(descIndex) / sizeof(*descIndex) && descIndex[i].type; ++i) {
         if(DescriptorType == descIndex[i].type && DescriptorNumber == descIndex[i].number) {
             *DescriptorAddress = descriptors + descIndex[i].offset;
             return descIndex[i].size;
@@ -237,10 +234,10 @@ void ReceiveNextOutput(void) {
 
             static struct {
                 struct {
-                    unsigned char type;
-                    unsigned char length;
+                    uint8_t type;
+                    uint8_t length;
                 } header;
-                unsigned char buffer[MAX_EP_SIZE];
+                uint8_t buffer[MAX_EP_SIZE];
             } packet = { .header.type = E_TYPE_OUT };
 
             uint16_t length = 0;

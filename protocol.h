@@ -6,6 +6,8 @@
 #ifndef _PROTOCOL_H_
 #define _PROTOCOL_H_
 
+#define MAX_DESCRIPTORS_SIZE 1024
+
 #define MAX_DESCRIPTORS 32 // code is optimized when MAX_DESCRIPTORS <= 255 / 5
 
 #if MAX_DESCRIPTORS > 255 / 5
@@ -13,6 +15,8 @@
 #else
 #define uintDescIndex uint8_t
 #endif
+
+#define MAX_ENDPOINTS 0x0f
 
 #define MAX_EP_SIZE 64
 

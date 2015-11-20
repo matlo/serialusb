@@ -16,9 +16,9 @@
 /*
  * This is a block of memory to store all descriptors.
  */
-static uint8_t descriptors[1024];
+static uint8_t descriptors[MAX_DESCRIPTORS_SIZE];
 static s_descIndex descIndex[MAX_DESCRIPTORS]; // MAX_DESCRIPTORS x 5 bytes
-static s_endpoint endpoints[16]; // 48 bytes
+static s_endpoint endpoints[MAX_ENDPOINTS]; // 48 bytes
 
 static uint8_t * pdesc = descriptors;
 

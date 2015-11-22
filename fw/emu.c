@@ -17,8 +17,8 @@
  * This is a block of memory to store all descriptors.
  */
 static uint8_t descriptors[MAX_DESCRIPTORS_SIZE];
-static s_descIndex descIndex[MAX_DESCRIPTORS]; // MAX_DESCRIPTORS x 5 bytes
-static s_endpoint endpoints[MAX_ENDPOINTS]; // 48 bytes
+static s_descIndex descIndex[MAX_DESCRIPTORS];
+static s_endpoint endpoints[MAX_ENDPOINTS];
 
 static uint8_t * pdesc = descriptors;
 
@@ -26,15 +26,17 @@ static uint8_t * pdesc = descriptors;
 static uint8_t * pindex = descIndex;
 #endif
 
-static s_input input; // 66 bytes (should not exceed 255 bytes)
+static s_epData input; // 66 bytes (should not exceed 255 bytes)
+static uint8_t inputDataSize;
 
 /*
  * These variables are used in both the main and serial interrupt,
  * therefore they have to be declared as volatile.
  */
-static volatile unsigned char started = 0;
-static volatile unsigned char controlReply = 0;
-static volatile unsigned char controlReplyLen = 0;
+static volatile uint8_t started = 0;
+static volatile uint8_t controlReply = 0;
+static volatile uint8_t controlReplyLen = 0;
+static volatile int8_t selectedOutEndpoint = -1;
 
 static inline void forceHardReset(void) {
 
@@ -60,7 +62,7 @@ static inline void send_control_header(void) {
     Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
 }
 
-static unsigned char buf[MAX_CONTROL_TRANSFER_SIZE];
+static uint8_t buf[MAX_CONTROL_TRANSFER_SIZE];
 
 #define READ_VALUE_INC(TARGET) \
     while (value_len--) { \
@@ -69,11 +71,11 @@ static unsigned char buf[MAX_CONTROL_TRANSFER_SIZE];
 
 #define READ_VALUE(TARGET) \
     { \
-        unsigned char * ptr = TARGET; \
+        uint8_t * ptr = TARGET; \
         READ_VALUE_INC(ptr) \
     }
 
-static inline void ack(const unsigned char type) {
+static inline void ack(const uint8_t type) {
     Serial_SendByte(type);
     Serial_SendByte(BYTE_LEN_0_BYTE);
 }
@@ -81,8 +83,8 @@ static inline void ack(const unsigned char type) {
 
 ISR(USART1_RX_vect) {
 
-    unsigned char packet_type = UDR1;
-    unsigned char value_len = Serial_BlockingReceiveByte();
+    uint8_t packet_type = UDR1;
+    uint8_t value_len = Serial_BlockingReceiveByte();
     static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_in };
     if(packet_type > E_TYPE_IN) {
         return;
@@ -114,6 +116,7 @@ ISR(USART1_RX_vect) {
     controlReply = 1;
     return;
     l_in:
+    inputDataSize = value_len - 1;
     READ_VALUE((uint8_t*)&input)
     return;
 }
@@ -160,6 +163,11 @@ void EVENT_USB_Device_ConfigurationChanged(void) {
             Endpoint_ConfigureEndpoint(endpoints[i].number, endpoints[i].type, endpoints[i].size, 1);
         }
         //TODO MLA: other endpoint types
+        if(selectedOutEndpoint == -1) {
+            if((endpoints[i].number & ENDPOINT_DIR_MASK) == ENDPOINT_DIR_OUT) {
+                selectedOutEndpoint = i;
+            }
+        }
     }
 }
 
@@ -195,7 +203,7 @@ void EVENT_USB_Device_UnhandledControlRequest(void) {
         Endpoint_Write_Control_Stream_LE(buf, controlReplyLen);
         Endpoint_ClearOUT();
     } else {
-        static unsigned char buffer[MAX_CONTROL_TRANSFER_SIZE];
+        static uint8_t buffer[MAX_CONTROL_TRANSFER_SIZE];
         Endpoint_ClearSETUP();
         Endpoint_Read_Control_Stream_LE(buffer, USB_ControlRequest.wLength);
         Endpoint_ClearIN();
@@ -210,49 +218,71 @@ void SendNextInput(void) {
 
         Endpoint_SelectEndpoint(input.endpoint);
 
-        while (!Endpoint_IsINReady()) {}
+        if (Endpoint_IsINReady()) {
 
-        Endpoint_Write_Stream_LE(input.data, input.size, NULL);
+            Endpoint_Write_Stream_LE(input.data, inputDataSize, NULL);
 
-        Endpoint_ClearIN();
+            Endpoint_ClearIN();
 
-        input.endpoint = 0;
+            input.endpoint = 0;
 
-        ack(E_TYPE_IN);
+            ack(E_TYPE_IN);
+        }
+    }
+}
+
+static void setNextOutEndpoint(void) {
+    if(selectedOutEndpoint != -1) {
+        int8_t i;
+        for (i = selectedOutEndpoint + 1; i < sizeof(endpoints) / sizeof(*endpoints) && endpoints[i].number; ++i) {
+            if ((endpoints[i].number & ENDPOINT_DIR_MASK) == ENDPOINT_DIR_OUT) {
+                selectedOutEndpoint = i;
+                return;
+            }
+        }
+        for (i = 0; i < selectedOutEndpoint && endpoints[i].number; ++i) {
+            if ((endpoints[i].number & ENDPOINT_DIR_MASK) == ENDPOINT_DIR_OUT) {
+                selectedOutEndpoint = i;
+                return;
+            }
+        }
     }
 }
 
 void ReceiveNextOutput(void) {
 
-    uint8_t endpoint = 0; //TODO MLA
+    if (selectedOutEndpoint >= 0) {
 
-    if(endpoint) {
+        static struct {
+            struct {
+                uint8_t type;
+                uint8_t length;
+            } header;
+            s_epData value;
+        } packet = { .header.type = E_TYPE_OUT };
 
-        Endpoint_SelectEndpoint(endpoint);
+        s_endpoint * endpoint = endpoints + selectedOutEndpoint;
+        packet.value.endpoint = endpoint->number;
+
+        setNextOutEndpoint();
+
+        Endpoint_SelectEndpoint(endpoint->number);
 
         if (Endpoint_IsOUTReceived()) {
-
-            static struct {
-                struct {
-                    uint8_t type;
-                    uint8_t length;
-                } header;
-                uint8_t buffer[MAX_EP_SIZE];
-            } packet = { .header.type = E_TYPE_OUT };
 
             uint16_t length = 0;
 
             if (Endpoint_IsReadWriteAllowed()) {
-                uint8_t ErrorCode = Endpoint_Read_Stream_LE(packet.buffer, sizeof(packet.buffer), &length);
-                if(ErrorCode == ENDPOINT_RWSTREAM_NoError) {
-                    length = sizeof(packet.buffer);
+                uint8_t ErrorCode = Endpoint_Read_Stream_LE(packet.value.data, endpoint->size, &length);
+                if (ErrorCode == ENDPOINT_RWSTREAM_NoError) {
+                    length = endpoint->size;
                 }
             }
 
             Endpoint_ClearOUT();
 
-            if(length) {
-                packet.header.length = length & 0xFF;
+            if (length) {
+                packet.header.length = length + 1;
                 Serial_SendData(&packet, sizeof(packet.header) + packet.header.length);
             }
         }

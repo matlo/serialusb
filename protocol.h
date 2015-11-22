@@ -16,7 +16,7 @@
 #define uintDescIndex uint8_t
 #endif
 
-#define MAX_ENDPOINTS 0x0f
+#define MAX_ENDPOINTS 6
 
 #define MAX_EP_SIZE 64
 
@@ -35,9 +35,8 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     uint8_t endpoint; // 0 means nothing to send
-    uint8_t size;
     uint8_t data[MAX_EP_SIZE];
-} s_input;
+} s_epData;
 
 typedef enum {
     E_TYPE_DESCRIPTORS,

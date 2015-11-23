@@ -65,7 +65,7 @@ static inline void send_control_header(void) {
 
     uint8_t len = sizeof(USB_ControlRequest);
     if( !(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) ) {
-        len += (USB_ControlRequest.wLength & 0xFF);
+        len += (USB_ControlRequest.wLength & 0xFF); //TODO MLA: send multiple packets
     }
     Serial_SendByte(E_TYPE_CONTROL);
     Serial_SendByte(len);

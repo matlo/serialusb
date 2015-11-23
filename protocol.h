@@ -36,7 +36,7 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint8_t endpoint; // 0 means nothing to send
     uint8_t data[MAX_EP_SIZE];
-} s_epData;
+} s_epData; // should not exceed 255 bytes
 
 typedef enum {
     E_TYPE_DESCRIPTORS,

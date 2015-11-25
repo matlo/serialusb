@@ -15,14 +15,10 @@
 
 #define USBASYNC_OUT_TIMEOUT 20 // ms
 
-#ifdef WIN32
-#define PACKED __attribute__((gcc_struct, packed))
-#else
-#define PACKED __attribute__((packed))
-#endif
-
 #define IS_ENDPOINT_IN(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
 #define IS_ENDPOINT_OUT(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_OUT)
+
+#define INVALID_ENDPOINT_INDEX 0xff
 
 static struct {
   char * path;
@@ -63,6 +59,8 @@ static void print_error_libusb(const char * file, int line, const char * func, c
 #define PRINT_ERROR_INVALID_ENDPOINT(msg, endpoint) fprintf(stderr, "%s:%d %s: %s: 0x%02x\n", __FILE__, __LINE__, __func__, msg, endpoint);
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
+
+#define PRINT_TRANSFER_ERROR(transfer) fprintf(stderr, "libusb_transfer failed with status %s (endpoint=0x%02x)\n", libusb_error_name(transfer->status), transfer->endpoint);
 
 static libusb_context* ctx = NULL;
 
@@ -151,7 +149,7 @@ static inline unsigned char get_endpoint(int device, unsigned char endpoint, uns
   if ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) != direction) {
 
     PRINT_ERROR_INVALID_ENDPOINT("wrong direction for endpoint", endpoint)
-    return 0;
+    return INVALID_ENDPOINT_INDEX;
   }
   
   unsigned char endpointIndex = (endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK);
@@ -159,22 +157,22 @@ static inline unsigned char get_endpoint(int device, unsigned char endpoint, uns
   if (endpointIndex == 0) {
 
     PRINT_ERROR_INVALID_ENDPOINT("invalid endpoint", endpoint)
-    return 0;
+    return INVALID_ENDPOINT_INDEX;
   }
   
   if (endpoint != usbdevices[device].endpoints[endpointIndex].address) {
   
     PRINT_ERROR_INVALID_ENDPOINT("no such endpoint", endpoint)
-    return 0;
+    return INVALID_ENDPOINT_INDEX;
   }
 
   if (count > usbdevices[device].endpoints[endpointIndex].size) {
 
     PRINT_ERROR_OTHER("incorrect transfer size")
-    return 0;
+    return INVALID_ENDPOINT_INDEX;
   }
   
-  return endpointIndex;
+  return endpointIndex - 1;
 }
 #define GET_ENDPOINT(device,endpoint,direction,count) \
         get_endpoint(device, endpoint, direction, count, __FILE__, __LINE__, __func__);
@@ -246,12 +244,10 @@ int usbasync_poll(int device, unsigned char endpoint) {
   USBASYNC_CHECK_DEVICE(device, -1)
 
   unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_IN, 0)
-  if(endpointIndex == 0) {
+  if(endpointIndex == INVALID_ENDPOINT_INDEX) {
   
     return -1;
   }
-
-  --endpointIndex;
 
   if (usbdevices[device].callback.fp_write == NULL) {
 
@@ -301,27 +297,33 @@ static void usb_callback(struct libusb_transfer* transfer) {
     return;
   }
 
-  if (transfer->type == LIBUSB_TRANSFER_TYPE_INTERRUPT) {
-    if (transfer->status == LIBUSB_TRANSFER_COMPLETED) {
-      if (IS_ENDPOINT_IN(transfer->endpoint)) {
-        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer,
-            transfer->actual_length);
-      } else {
-        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfer->actual_length);
-      }
-    } else {
-      if (IS_ENDPOINT_OUT(transfer->endpoint)
-          || (transfer->status != LIBUSB_TRANSFER_TIMED_OUT && transfer->status != LIBUSB_TRANSFER_CANCELLED)) {
-        fprintf(stderr, "libusb_transfer failed with status %s (endpoint=0x%02x)\n",
-            libusb_error_name(transfer->status), transfer->endpoint);
-      }
-      if (IS_ENDPOINT_OUT(transfer->endpoint)) {
-        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, -1);
-      }
+  int transfered;
+  switch (transfer->status) {
+  case LIBUSB_TRANSFER_COMPLETED:
+    transfered = transfer->actual_length;
+    break;
+  case LIBUSB_TRANSFER_TIMED_OUT:
+    transfered = 0;
+    if (IS_ENDPOINT_OUT(transfer->endpoint)) {
+      PRINT_TRANSFER_ERROR(transfer)
     }
-
-    remove_transfer(transfer);
+    break;
+  case LIBUSB_TRANSFER_CANCELLED:
+    break;
+  default:
+    transfered = -1;
+    PRINT_TRANSFER_ERROR(transfer)
+    break;
   }
+  if (transfer->status != LIBUSB_TRANSFER_CANCELLED) {
+    if (IS_ENDPOINT_OUT(transfer->endpoint)) {
+      usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
+    } else {
+      usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer, transfered);
+    }
+  }
+
+  remove_transfer(transfer);
 }
 
 int handle_events(int unused) {
@@ -368,12 +370,10 @@ int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf,
   USBASYNC_CHECK_DEVICE(device, -1)
 
   unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, count)
-  if(endpointIndex == 0) {
+  if(endpointIndex == INVALID_ENDPOINT_INDEX) {
   
     return -1;
   }
-
-  --endpointIndex;
 
   return transfer_timeout(device, endpointIndex, buf, count, timeout);
 }
@@ -383,12 +383,10 @@ int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsign
   USBASYNC_CHECK_DEVICE(device, -1)
 
   unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, count)
-  if(endpointIndex == 0) {
+  if(endpointIndex == INVALID_ENDPOINT_INDEX) {
   
     return -1;
   }
-
-  --endpointIndex;
 
   return transfer_timeout(device, endpointIndex, buf, count, timeout);
 }
@@ -438,6 +436,28 @@ static int get_configurations (int device) {
   return 0;
 }
 
+static int add_descriptor (int device, unsigned char type, unsigned char index, unsigned short length, unsigned char * data) {
+
+  s_usb_descriptors * descriptors = &usbdevices[device].descriptors;
+  
+  void * ptr = realloc(descriptors->others, (descriptors->nbOthers + 1) * sizeof(*descriptors->others));
+  if (ptr == NULL) {
+    PRINT_ERROR_ALLOC_FAILED("realloc");
+    free(data);
+    return -1;
+  }
+
+  descriptors->others = ptr;
+  memset(descriptors->others + descriptors->nbOthers, 0x00, sizeof(*descriptors->others));
+  descriptors->others[descriptors->nbOthers].type = type;
+  descriptors->others[descriptors->nbOthers].index = index;
+  descriptors->others[descriptors->nbOthers].length = length;
+  descriptors->others[descriptors->nbOthers].data = data;
+  ++descriptors->nbOthers;
+  
+  return 0;
+}
+
 static int get_string_descriptor (int device, unsigned char index) {
 
   s_usb_descriptors * descriptors = &usbdevices[device].descriptors;
@@ -466,51 +486,29 @@ static int get_string_descriptor (int device, unsigned char index) {
     free(data);
     return -1;
   }
-
-  void * ptr = realloc(descriptors->strings, (descriptors->nbStrings + 1) * sizeof(*descriptors->strings));
-  if (ptr == NULL) {
-    PRINT_ERROR_ALLOC_FAILED("realloc");
-    free(data);
-    return -1;
-  }
-
-  descriptors->strings = ptr;
-  descriptors->strings[descriptors->nbStrings].index = index;
-  descriptors->strings[descriptors->nbStrings].data = data;
-  ++descriptors->nbStrings;
-
-  return 0;
+    
+  return add_descriptor(device, LIBUSB_DT_STRING, index, ret, data);
 }
-
-struct usb_hid_descriptor
-{
-  unsigned char bLength;
-  unsigned char bDescriptorType;
-  unsigned short bcdHID;
-  unsigned char bCountryCode;
-  unsigned char bNumDescriptors;
-  unsigned char bReportDescriptorType;
-  unsigned short wReportDescriptorLength;
-} PACKED;
 
 static int probe_interface (int device, unsigned char configurationIndex, struct usb_interface_descriptor * interface) {
 
-  s_usb_descriptors * descriptors = &usbdevices[device].descriptors;
+  struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
 
-  if (interface->bInterfaceNumber >= descriptors->configurations[configurationIndex].descriptor->bNumInterfaces) {
+  if (interface->bInterfaceNumber >= pConfiguration->descriptor->bNumInterfaces) {
     PRINT_ERROR_OTHER("bad interface number")
     return -1;
   }
 
-  struct p_interface * pInterface = descriptors->configurations[configurationIndex].interfaces + interface->bInterfaceNumber;
+  struct p_interface * pInterface = pConfiguration->interfaces + interface->bInterfaceNumber;
 
-  void * interfaces = realloc(pInterface->altInterfaces, (pInterface->bNumAltInterfaces + 1) * sizeof(*pInterface->altInterfaces));
-  if(interfaces == NULL) {
+  void * altInterfaces = realloc(pInterface->altInterfaces, (pInterface->bNumAltInterfaces + 1) * sizeof(*pInterface->altInterfaces));
+  if(altInterfaces == NULL) {
     PRINT_ERROR_ALLOC_FAILED("realloc");
     return -1;
   }
 
-  pInterface->altInterfaces = interfaces;
+  pInterface->altInterfaces = altInterfaces;
+  memset(pInterface->altInterfaces + pInterface->bNumAltInterfaces, 0x00, sizeof(*pInterface->altInterfaces));
   pInterface->altInterfaces[pInterface->bNumAltInterfaces].descriptor = interface;
   ++pInterface->bNumAltInterfaces;
 
@@ -524,17 +522,73 @@ static int probe_interface (int device, unsigned char configurationIndex, struct
   return 0;
 }
 
-static int probe_hid (int device, unsigned char configurationIndex, struct usb_hid_descriptor * hid) {
+struct p_altInterface * get_interface (int device, unsigned char configurationIndex, struct usb_interface_descriptor * interface) {
 
+  if (interface == NULL) {
+      PRINT_ERROR_OTHER("missing interface")
+      return NULL;
+    }
 
-  //TODO MLA
+    struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
+
+    if (interface->bInterfaceNumber >= pConfiguration->descriptor->bNumInterfaces) {
+      PRINT_ERROR_OTHER("bad interface number")
+      return NULL;
+    }
+
+    if (interface->bAlternateSetting >= pConfiguration->interfaces[interface->bInterfaceNumber].bNumAltInterfaces) {
+      PRINT_ERROR_OTHER("bad alternative interface number")
+      return NULL;
+    }
+
+    return pConfiguration->interfaces[interface->bInterfaceNumber].altInterfaces + interface->bAlternateSetting;
+}
+
+static int probe_hid (int device, unsigned char configurationIndex, struct usb_interface_descriptor * interface, struct usb_hid_descriptor * hid) {
+
+  struct p_altInterface * pAltInterface = get_interface(device, configurationIndex, interface);
+  if (pAltInterface == NULL) {
+    return -1;
+  }
+  
+  pAltInterface->hidDescriptor = hid;
+
+  if (hid->wReportDescriptorLength > 0) {
+    unsigned char * data = calloc(hid->wReportDescriptorLength, sizeof(unsigned char));
+    if (data == NULL) {
+      PRINT_ERROR_ALLOC_FAILED("calloc")
+      return -1;
+    }
+    int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN | LIBUSB_RECIPIENT_INTERFACE,
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_REPORT << 8) | 0, 0, data, hid->wReportDescriptorLength, 1000);
+    if (ret < 0) {
+      PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
+      return -1;
+    }
+    
+    return add_descriptor(device, LIBUSB_DT_REPORT, 0, ret, data);
+  }
 
   return 0;
 }
 
-static int probe_endpoint (int device, unsigned char configurationIndex, struct usb_hid_descriptor * endpoint) {
+static int probe_endpoint (int device, unsigned char configurationIndex, struct usb_interface_descriptor * interface, struct usb_endpoint_descriptor * endpoint) {
 
-  //TODO MLA
+  struct p_altInterface * pAltInterface = get_interface(device, configurationIndex, interface);
+  if (pAltInterface == NULL) {
+    return -1;
+  }
+
+  void * endpoints = realloc(pAltInterface->endpoints, (pAltInterface->bNumEndpoints + 1) * sizeof(*pAltInterface->endpoints));
+  if(endpoints == NULL) {
+    PRINT_ERROR_ALLOC_FAILED("realloc");
+    return -1;
+  }
+
+  pAltInterface->endpoints = endpoints;
+  memset(pAltInterface->endpoints + pAltInterface->bNumEndpoints, 0x00, sizeof(*pAltInterface->endpoints));
+  pAltInterface->endpoints[pAltInterface->bNumEndpoints] = endpoint;
+  ++pAltInterface->bNumEndpoints;
 
   return 0;
 }
@@ -566,36 +620,39 @@ static int probe_configurations (int device) {
     }
     
     ptr += configuration->bLength;
+
+    struct usb_interface_descriptor * interface = NULL;
   
     while (ptr < (void *)configuration + configuration->wTotalLength) {
       
       struct usb_descriptor_header * header = ptr;
       
       switch (header->bDescriptorType) {
-      case LIBUSB_DT_CONFIG:
       break;
       case LIBUSB_DT_INTERFACE:
+      interface = ptr;
       ret = probe_interface(device, index, ptr);
       if (ret < 0) {
         return -1;
       }
       break;
       case LIBUSB_DT_ENDPOINT:
-      ret = probe_endpoint(device, index, ptr);
+      ret = probe_endpoint(device, index, interface, ptr);
       if (ret < 0) {
         return -1;
       }
       break;
       case LIBUSB_DT_HID:
-        ret = probe_hid(device, index, ptr);
+        ret = probe_hid(device, index, interface, ptr);
         if (ret < 0) {
           return -1;
         }
       break;
-      case LIBUSB_DT_REPORT: // unlikely
-      case LIBUSB_DT_PHYSICAL: // unlikely
-      case LIBUSB_DT_DEVICE: // unlikely
-      case LIBUSB_DT_STRING: // unlikely
+      case LIBUSB_DT_CONFIG:
+      case LIBUSB_DT_REPORT:
+      case LIBUSB_DT_PHYSICAL:
+      case LIBUSB_DT_DEVICE:
+      case LIBUSB_DT_STRING:
       default:
       fprintf(stderr, "unhandled descriptor type: 0x%02x\n", header->bDescriptorType);
       break;
@@ -667,6 +724,11 @@ static int get_descriptors (int device) {
   
   int ret = get_device(device);
   if (ret < 0) {
+    return -1;
+  }
+  
+  if(usbdevices[device].descriptors.device.bNumConfigurations == 0) {
+    PRINT_ERROR_OTHER("device has no configuration")
     return -1;
   }
   
@@ -1038,12 +1100,10 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
   USBASYNC_CHECK_DEVICE(device, -1)
 
   unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, 0)
-  if(endpointIndex == 0) {
+  if(endpointIndex == INVALID_ENDPOINT_INDEX) {
   
     return -1;
   }
-
-  --endpointIndex;
 
   if (usbdevices[device].callback.fp_write == NULL) {
 
@@ -1073,4 +1133,3 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
 
   return submit_transfer(transfer);
 }
-

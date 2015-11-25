@@ -8,6 +8,23 @@
 
 #include <linux/usb/ch9.h>
 
+#ifdef WIN32
+#define PACKED __attribute__((gcc_struct, packed))
+#else
+#define PACKED __attribute__((packed))
+#endif
+
+struct usb_hid_descriptor
+{
+  unsigned char bLength;
+  unsigned char bDescriptorType;
+  unsigned short bcdHID;
+  unsigned char bCountryCode;
+  unsigned char bNumDescriptors;
+  unsigned char bReportDescriptorType;
+  unsigned short wReportDescriptorLength;
+} PACKED;
+
 typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, unsigned int count);
 typedef int (* USBASYNC_WRITE_CALLBACK)(int user, unsigned char endpoint, int transfered);
 typedef int (* USBASYNC_CLOSE_CALLBACK)(int user);
@@ -19,7 +36,9 @@ typedef void (* USBASYNC_REGISTER_SOURCE)(HANDLE handle, int id, int (*fp_read)(
 
 struct p_altInterface {
   struct usb_interface_descriptor * descriptor;
-  struct usb_endpoint_descriptor * endpoints; //interfaces.descriptor->bNumEndpoints elements
+  struct usb_hid_descriptor * hidDescriptor;
+  unsigned char bNumEndpoints;
+  struct usb_endpoint_descriptor ** endpoints; //bNumEndpoints elements
 };
 
 struct p_interface {
@@ -30,7 +49,7 @@ struct p_interface {
 struct p_configuration {
   unsigned char * raw;
   struct usb_config_descriptor * descriptor;
-  struct p_interface * interfaces; //configurations.descriptor->bNumInterfaces elements
+  struct p_interface * interfaces; //descriptor->bNumInterfaces elements
 };
 
 struct p_string {
@@ -41,18 +60,17 @@ struct p_string {
 
 struct p_other {
   unsigned char type;
+  unsigned char index;
   unsigned short length;
   unsigned char * data;
 };
 
 typedef struct {
     struct usb_device_descriptor device;
-    struct p_configuration * configurations; //descriptor.bNumConfigurations elements
+    struct p_configuration * configurations; //device.bNumConfigurations elements
     struct usb_string_descriptor langId0;
-    unsigned int nbStrings;
-    struct p_string * strings;
     unsigned int nbOthers;
-    struct p_other * other;
+    struct p_other * others; //nbOthers elements
 } s_usb_descriptors;
 
 typedef struct {

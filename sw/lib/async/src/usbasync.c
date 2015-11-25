@@ -815,7 +815,7 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
 #endif
 
   int configuration;
-
+  
   ret = libusb_get_configuration(usbdevices[device].devh, &configuration);
   if (ret != LIBUSB_SUCCESS) {
     PRINT_ERROR_LIBUSB("libusb_get_configuration", ret)
@@ -824,8 +824,7 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
 
   if (configuration == 0) {
     configuration = 1;
-    //warning: this is a blocking function
-    ret = libusb_set_configuration(usbdevices[device].devh, 1);
+    ret = libusb_set_configuration(usbdevices[device].devh, 1); //warning: this is a blocking function
     if (ret != LIBUSB_SUCCESS) {
       PRINT_ERROR_LIBUSB("libusb_set_configuration", ret)
       return -1;
@@ -837,6 +836,7 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
       return -1;
   }
 
+  // Don't use libusb_get_config_descriptor: it squeezes out some parts of the descriptor!
   ret = get_descriptors(device);
   if(ret < 0) {
       return -1;

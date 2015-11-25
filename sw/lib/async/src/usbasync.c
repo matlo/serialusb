@@ -24,9 +24,6 @@ static struct {
   char * path;
   libusb_device_handle * devh;
   s_usb_descriptors descriptors;
-  unsigned char configuration;
-  unsigned char interface;
-  unsigned char altSetting;
   struct {
     unsigned char address;
     unsigned char type;
@@ -561,9 +558,10 @@ static int probe_hid (int device, unsigned char configurationIndex, struct usb_i
       return -1;
     }
     int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN | LIBUSB_RECIPIENT_INTERFACE,
-        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_REPORT << 8) | 0, 0, data, hid->wReportDescriptorLength, 1000);
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_REPORT << 8) | 0, pAltInterface->descriptor->bInterfaceNumber, data, hid->wReportDescriptorLength, 1000);
     if (ret < 0) {
       PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
+      free(data);
       return -1;
     }
     
@@ -643,12 +641,6 @@ static int probe_configurations (int device) {
       if (ret < 0) {
         return -1;
       }
-      if (usbdevices[device].configuration == 0) {
-        // select this (configuration, interface, altSetting) as the default one
-        usbdevices[device].configuration = configuration->bConfigurationValue;
-        usbdevices[device].interface = interface->bInterfaceNumber;
-        usbdevices[device].altSetting = interface->bAlternateSetting;
-      }
       break;
       case LIBUSB_DT_HID:
         ret = probe_hid(device, index, interface, ptr);
@@ -707,9 +699,6 @@ static int get_device (int device) {
     }
   }
 
-  if (descriptor->bNumConfigurations) {
-      usbdevices[device].configuration = 1; //default configuration
-  }
   return 0;
 }
 
@@ -746,6 +735,53 @@ static int get_descriptors (int device) {
   }
   
   return probe_configurations(device);
+}
+
+static int handle_interfaces(int device, int claim) {
+
+  libusb_device * dev = libusb_get_device(usbdevices[device].devh);
+  if (dev == NULL) {
+    PRINT_ERROR_OTHER("libusb_get_device failed")
+    return -1;
+  }
+
+  struct libusb_device_descriptor desc;
+  int ret = libusb_get_device_descriptor(dev, &desc);
+  if (ret != LIBUSB_SUCCESS) {
+    PRINT_ERROR_LIBUSB("libusb_get_device_descriptor", ret)
+    return -1;
+  }
+
+  if (desc.bNumConfigurations) {
+
+    struct libusb_config_descriptor * configuration;
+    ret = libusb_get_config_descriptor(dev, 0, &configuration);
+    if (ret != LIBUSB_SUCCESS) {
+      return -1;
+    }
+    int interfaceIndex;
+    for (interfaceIndex = 0; interfaceIndex < configuration->bNumInterfaces; ++interfaceIndex) {
+      const struct libusb_interface * interface = configuration->interface + interfaceIndex;
+      if(claim) {
+        ret = libusb_claim_interface(usbdevices[device].devh,  interface->altsetting->bInterfaceNumber);
+        if (ret != LIBUSB_SUCCESS) {
+          PRINT_ERROR_LIBUSB("libusb_claim_interface", ret)
+          libusb_free_config_descriptor(configuration);
+          return -1;
+        }
+      } else {
+        ret = libusb_release_interface(usbdevices[device].devh, interface->altsetting->bInterfaceNumber); //warning: this is a blocking function
+        if (ret != LIBUSB_SUCCESS) {
+          PRINT_ERROR_LIBUSB("libusb_release_interface", ret)
+          libusb_free_config_descriptor(configuration);
+          return -1;
+        }
+      }
+    }
+    libusb_free_config_descriptor(configuration);
+  }
+
+  return 0;
 }
 
 static int claim_device(int device, libusb_device * dev, struct libusb_device_descriptor * desc) {
@@ -796,42 +832,14 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
     }
   }
 
-  int interface = 0;
-  ret = libusb_claim_interface(usbdevices[device].devh,  interface);
-  if (ret != LIBUSB_SUCCESS) {
-    PRINT_ERROR_LIBUSB("libusb_claim_interface", ret)
-    return -1;
+  ret = handle_interfaces(device, 1);
+  if(ret < 0) {
+      return -1;
   }
 
   ret = get_descriptors(device);
   if(ret < 0) {
       return -1;
-  }
-
-  if (configuration != usbdevices[device].configuration) {
-    //warning: this is a blocking function
-    ret = libusb_set_configuration(usbdevices[device].devh, 1);
-    if (ret != LIBUSB_SUCCESS) {
-      PRINT_ERROR_LIBUSB("libusb_set_configuration", ret)
-      return -1;
-    }
-  }
-
-  //TODO MLA: should we claim all interfaces?
-
-  if(interface != usbdevices[device].interface) {
-    ret = libusb_claim_interface(usbdevices[device].devh,  usbdevices[device].interface);
-    if (ret != LIBUSB_SUCCESS) {
-      PRINT_ERROR_LIBUSB("libusb_claim_interface", ret)
-      return -1;
-    }
-  }
-
-  //warning: this is a blocking function
-  ret = libusb_set_interface_alt_setting(usbdevices[device].devh, usbdevices[device].interface, usbdevices[device].altSetting);
-  if (ret != LIBUSB_SUCCESS) {
-    PRINT_ERROR_LIBUSB("libusb_set_interface_alt_setting", ret)
-    return -1;
   }
 
   return 0;
@@ -1098,7 +1106,7 @@ int usbasync_close(int device) {
 
     cancel_transfers(device);
 
-    libusb_release_interface(usbdevices[device].devh, usbdevices[device].interface); //warning: this is a blocking function
+    handle_interfaces(device, 0); //warning: this is a blocking function
 #if !defined(LIBUSB_API_VERSION) && !defined(LIBUSBX_API_VERSION)
 #ifndef WIN32
         libusb_attach_kernel_driver(usbdevices[device].devh, 0);

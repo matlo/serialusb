@@ -26,6 +26,7 @@ static struct {
   s_usb_descriptors descriptors;
   unsigned char configuration;
   unsigned char interface;
+  unsigned char altSetting;
   struct {
     unsigned char address;
     unsigned char type;
@@ -407,7 +408,7 @@ static int get_configurations (int device) {
     struct usb_config_descriptor descriptor;
     
     int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | (index + 1), 0, (unsigned char *)&descriptor,
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | index, 0, (unsigned char *)&descriptor,
         sizeof(descriptor), 1000);
     
     if (ret < 0) {
@@ -424,7 +425,7 @@ static int get_configurations (int device) {
     }
     
     ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | (index + 1), 0, configurations->raw,
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | index, 0, configurations->raw,
         descriptor.wTotalLength, 1000);
     
     if (ret < 0) {
@@ -603,7 +604,8 @@ static int probe_configurations (int device) {
   for (index = 0; index < descriptors->device.bNumConfigurations; ++index) {
   
     void * ptr = descriptors->configurations[index].raw;
-  
+
+    descriptors->configurations[index].descriptor = ptr;
     struct usb_config_descriptor * configuration = ptr;
 
     descriptors->configurations[index].interfaces = calloc(configuration->bNumInterfaces, sizeof(*descriptors->configurations[index].interfaces));
@@ -640,6 +642,12 @@ static int probe_configurations (int device) {
       ret = probe_endpoint(device, index, interface, ptr);
       if (ret < 0) {
         return -1;
+      }
+      if (usbdevices[device].configuration == 0) {
+        // select this (configuration, interface, altSetting) as the default one
+        usbdevices[device].configuration = configuration->bConfigurationValue;
+        usbdevices[device].interface = interface->bInterfaceNumber;
+        usbdevices[device].altSetting = interface->bAlternateSetting;
       }
       break;
       case LIBUSB_DT_HID:
@@ -770,15 +778,6 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
 #endif
 #endif
 
-  ret = get_descriptors(device);
-  if(ret < 0) {
-      return -1;
-  }
-  
-  //TODO MLA: select default configuration / interface
-  
-  //TODO MLA: do we need to claim the interface before issuing control requests?
-  
   int configuration;
 
   ret = libusb_get_configuration(usbdevices[device].devh, &configuration);
@@ -787,25 +786,49 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
     return -1;
   }
 
-  struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations;
-  if (configuration != pConfiguration->descriptor->bConfigurationValue) {
+  if (configuration == 0) {
+    configuration = 1;
     //warning: this is a blocking function
-    ret = libusb_set_configuration(usbdevices[device].devh, pConfiguration->descriptor->bConfigurationValue);
+    ret = libusb_set_configuration(usbdevices[device].devh, 1);
     if (ret != LIBUSB_SUCCESS) {
       PRINT_ERROR_LIBUSB("libusb_set_configuration", ret)
       return -1;
     }
   }
 
-  struct p_altInterface * pAltInterface = usbdevices[device].descriptors.configurations[0].interfaces[0].altInterfaces;
-  ret = libusb_claim_interface(usbdevices[device].devh, pAltInterface->descriptor->bInterfaceNumber);
+  int interface = 0;
+  ret = libusb_claim_interface(usbdevices[device].devh,  interface);
   if (ret != LIBUSB_SUCCESS) {
     PRINT_ERROR_LIBUSB("libusb_claim_interface", ret)
     return -1;
   }
 
+  ret = get_descriptors(device);
+  if(ret < 0) {
+      return -1;
+  }
+
+  if (configuration != usbdevices[device].configuration) {
+    //warning: this is a blocking function
+    ret = libusb_set_configuration(usbdevices[device].devh, 1);
+    if (ret != LIBUSB_SUCCESS) {
+      PRINT_ERROR_LIBUSB("libusb_set_configuration", ret)
+      return -1;
+    }
+  }
+
+  //TODO MLA: should we claim all interfaces?
+
+  if(interface != usbdevices[device].interface) {
+    ret = libusb_claim_interface(usbdevices[device].devh,  usbdevices[device].interface);
+    if (ret != LIBUSB_SUCCESS) {
+      PRINT_ERROR_LIBUSB("libusb_claim_interface", ret)
+      return -1;
+    }
+  }
+
   //warning: this is a blocking function
-  ret = libusb_set_interface_alt_setting(usbdevices[device].devh, pAltInterface->descriptor->bInterfaceNumber, pAltInterface->descriptor->bAlternateSetting);
+  ret = libusb_set_interface_alt_setting(usbdevices[device].devh, usbdevices[device].interface, usbdevices[device].altSetting);
   if (ret != LIBUSB_SUCCESS) {
     PRINT_ERROR_LIBUSB("libusb_set_interface_alt_setting", ret)
     return -1;
@@ -1087,8 +1110,28 @@ int usbasync_close(int device) {
   free(usbdevices[device].path);
   unsigned char configurationIndex;
   for (configurationIndex = 0; configurationIndex < usbdevices[device].descriptors.device.bNumConfigurations; ++configurationIndex) {
-      //TODO MLA
+    struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
+    if (pConfiguration->descriptor != NULL) {
+      unsigned char interfaceIndex;
+      for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
+        struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
+        unsigned char altInterfaceIndex;
+        for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
+          struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
+          free(pAltInterface->endpoints);
+        }
+        free(pInterface->altInterfaces);
+      }
+      free(pConfiguration->interfaces);
+    }
+    free(pConfiguration->raw);
   }
+  free(usbdevices[device].descriptors.configurations);
+  unsigned int othersIndex;
+  for (othersIndex = 0; othersIndex < usbdevices[device].descriptors.nbOthers; ++othersIndex) {
+    free(usbdevices[device].descriptors.others[othersIndex].data);
+  }
+  free(usbdevices[device].descriptors.others);
 
   memset(usbdevices + device, 0x00, sizeof(*usbdevices));
 
@@ -1132,4 +1175,30 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
       buffer, count, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_OUT_TIMEOUT);
 
   return submit_transfer(transfer);
+}
+
+int usbasync_print_descriptors (int device) {
+
+  USBASYNC_CHECK_DEVICE(device, -1)
+
+  unsigned char configurationIndex;
+  for (configurationIndex = 0; configurationIndex < usbdevices[device].descriptors.device.bNumConfigurations; ++configurationIndex) {
+    struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
+    printf("configuration: %hhu\n", pConfiguration->descriptor->bConfigurationValue);
+    unsigned char interfaceIndex;
+    for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
+      struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
+      unsigned char altInterfaceIndex;
+      for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
+        struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
+        printf("  interface: %hhu:%hhu\n", pAltInterface->descriptor->bInterfaceNumber, pAltInterface->descriptor->bAlternateSetting);
+        unsigned char endpointIndex;
+        for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
+          printf("    endpoint: 0x%02x\n", pAltInterface->endpoints[endpointIndex]->bEndpointAddress);
+        }
+      }
+
+    }
+  }
+  return 0;
 }

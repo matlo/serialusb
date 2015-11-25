@@ -52,12 +52,6 @@ struct p_configuration {
   struct p_interface * interfaces; //descriptor->bNumInterfaces elements
 };
 
-struct p_string {
-  unsigned char index;
-  unsigned short length;
-  unsigned char * data;
-};
-
 struct p_other {
   unsigned char type;
   unsigned char index;
@@ -90,5 +84,6 @@ int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsign
 int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close, USBASYNC_REGISTER_SOURCE fp_register);
 int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
 int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout);
+int usbasync_print_descriptors(int device);
 
 #endif /* USBASYNC_H_ */

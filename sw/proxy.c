@@ -8,47 +8,6 @@
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
 
-static struct {
-  struct {
-    struct {
-      struct {
-        struct {
-          unsigned char number;
-          unsigned char type;
-        } * endpoints;
-        unsigned char nbEndpoints;
-      } * altInterfaces;
-      unsigned char nbAltInterfaces;
-      unsigned char currentAltInterface;
-    } * interfaces;
-    unsigned char nbInterfaces;
-    unsigned char currentInterface;
-  } * configurations;
-  unsigned char nbConfigurations;
-  unsigned char currentConfiguration;
-} device;
-
-static struct {
-  unsigned char number;
-  unsigned char type;
-} endpointCapabilities[] = {
-  {1, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {2, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {3, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {4, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {5, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {6, LIBUSB_TRANSFER_TYPE_INTERRUPT},
-  {7, 0},
-  {8, 0},
-  {9, 0},
-  {10, 0},
-  {11, 0},
-  {12, 0},
-  {13, 0},
-  {14, 0},
-  {15, 0},
-};
-
 static int send_data(int serial, unsigned char type, const unsigned char * data, unsigned int count) {
 
   if (count != 0 && data == NULL) {

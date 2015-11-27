@@ -10,9 +10,11 @@
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255
 
-#define MAX_ENDPOINTS 6
+#define MAX_ENDPOINTS 6 // excluding the control endpoint
 
-#define MAX_EP_SIZE 64
+#define MAX_PACKET_SIZE_EP0 64
+
+#define MAX_PAYLOAD_SIZE_EP 64 // for non-control endpoints
 
 typedef struct __attribute__((packed)) {
   uint16_t offset;
@@ -29,7 +31,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
   uint8_t endpoint; // 0 means nothing to send
-  uint8_t data[MAX_EP_SIZE];
+  uint8_t data[MAX_PAYLOAD_SIZE_EP];
 } s_epData; // should not exceed 255 bytes
 
 typedef enum {

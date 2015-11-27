@@ -20,6 +20,8 @@
 
 #define INVALID_ENDPOINT_INDEX 0xff
 
+#define DEFAULT_STRING_BUFFER_SIZE 255
+
 static struct {
   char * path;
   libusb_device_handle * devh;
@@ -460,29 +462,40 @@ static int get_string_descriptor (int device, unsigned char index) {
 
   s_usb_descriptors * descriptors = &usbdevices[device].descriptors;
 
-  struct usb_string_descriptor descriptor;
-
-  int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-      LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], (unsigned char *)&descriptor,
-      sizeof(descriptor), 1000);
-
-  if (ret < 0) {
-    PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
-    return -1;
-  }
-
-  unsigned char * data = calloc(descriptor.bLength, sizeof(unsigned char));
+  unsigned char * data = calloc(DEFAULT_STRING_BUFFER_SIZE, sizeof(*data));
   if (data == NULL) {
     PRINT_ERROR_ALLOC_FAILED("calloc");
     return -1;
   }
 
-  ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-      LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, descriptor.bLength, 1000);
+  int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
+      LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, DEFAULT_STRING_BUFFER_SIZE, 1000);
+
   if (ret < 0) {
     PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
     free(data);
     return -1;
+  }
+
+  struct usb_descriptor_header * descriptor = (struct usb_descriptor_header *)data;
+
+  if (descriptor->bLength > ret) {
+    void * ptr = realloc(data, descriptor->bLength * sizeof(*data));
+    if (ptr == NULL) {
+      PRINT_ERROR_ALLOC_FAILED("realloc");
+      free(data);
+      return -1;
+    }
+
+    data = ptr;
+
+    ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, descriptor->bLength, 1000);
+    if (ret < 0) {
+      PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
+      free(data);
+      return -1;
+    }
   }
     
   return add_descriptor(device, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], ret, data);

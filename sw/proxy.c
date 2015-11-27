@@ -51,6 +51,11 @@ static struct {
 
 static int send_data(int serial, unsigned char type, const unsigned char * data, unsigned int count) {
 
+  if (count != 0 && data == NULL) {
+    PRINT_ERROR_OTHER("data is NULL")
+    return -1;
+  }
+
   do {
   
     unsigned char length = 254;
@@ -63,7 +68,9 @@ static int send_data(int serial, unsigned char type, const unsigned char * data,
       unsigned char length;
       unsigned char value[MAX_SERIAL_PACKET_SIZE - 2];
     } packet = { .type = type, .length = length };
-    memcpy(packet.value, data, length);
+    if (data) {
+      memcpy(packet.value, data, length);
+    }
     data += length;
     count -= length;
 
@@ -75,11 +82,11 @@ static int send_data(int serial, unsigned char type, const unsigned char * data,
   return 0;
 }
 
-#define ADD_DESCRIPTOR(WVALUE,NUMBER,WLENGTH,DATA) \
+#define ADD_DESCRIPTOR(WVALUE,WINDEX,WLENGTH,DATA) \
   if (pDesc + WLENGTH <= desc + MAX_DESCRIPTORS_SIZE && pDescIndex < descIndex + MAX_DESCRIPTORS) { \
     pDescIndex->offset = pDesc - desc; \
     pDescIndex->wValue = WVALUE; \
-    pDescIndex->wIndex = NUMBER; \
+    pDescIndex->wIndex = WINDEX; \
     pDescIndex->wLength = WLENGTH; \
     memcpy(pDesc, DATA, WLENGTH); \
     pDesc += WLENGTH; \
@@ -112,41 +119,49 @@ int proxy_init(int usb, int serial) {
     return -1;
   }
   
-  descriptors->device.bMaxPacketSize0 = 64;
+  descriptors->device.bMaxPacketSize0 = MAX_PACKET_SIZE_EP0;
 
   s_endpoint endpoints[MAX_ENDPOINTS] = {};
   s_endpoint * pEndpoints = endpoints;
-  unsigned char endpointNumbers[LIBUSB_ENDPOINT_DIR_MASK];
   
   unsigned char configurationIndex;
   for (configurationIndex = 0; configurationIndex < descriptors->device.bNumConfigurations; ++configurationIndex) {
+    unsigned char endpointNumber = 1;
     struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
-    printf("configuration: %hhu\n", pConfiguration->descriptor->bConfigurationValue);
     unsigned char interfaceIndex;
     for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
       struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
       unsigned char altInterfaceIndex;
       for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
         struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
-        printf("  interface: %hhu:%hhu\n", pAltInterface->descriptor->bInterfaceNumber, pAltInterface->descriptor->bAlternateSetting);
         unsigned char endpointIndex;
         for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
-          printf("    endpoint: 0x%02x\n", pAltInterface->endpoints[endpointIndex]->bEndpointAddress);
+          if (endpointNumber > MAX_ENDPOINTS) {
+            PRINT_ERROR_OTHER("too many endpoints")
+            return -1;
+          }
+          struct usb_endpoint_descriptor * endpoint =
+              descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
+          // renumber all endpoints
+          endpoint->bEndpointAddress = (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) | endpointNumber;
+          ++endpointNumber;
+          if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
+            PRINT_ERROR_OTHER("invalid endpoint size")
+          } else if (configurationIndex == 0) {
+            pEndpoints->number = endpoint->bEndpointAddress;
+            pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+            pEndpoints->size = endpoint->wMaxPacketSize;
+            ++pEndpoints;
+          }
         }
       }
     }
   }
   
-  unsigned int endpointIndex;
-  for (endpointIndex = 0; endpointIndex < descriptors->configurations[0].interfaces[0].altInterfaces[0].bNumEndpoints; ++endpointIndex) {
-    struct usb_endpoint_descriptor * endpoint = descriptors->configurations[0].interfaces[0].altInterfaces[0].endpoints[endpointIndex];
-    //TODO MLA: modify endpoint numbers in all configs, and make an s_endpoint table for config#0.itf#0
-    //TODO MLA: try not to modify if possible
-    //dans chaque interface il faut chercher tous les types pour chaque endpoint
-    //puis chercher un endpoint qui supporte tous les types, de manière minimale
-  }
+  printf("modified configurations:\n");
 
-  //unsigned int size = 0;
+  usbasync_print_descriptors(usb);
+
   unsigned char warn = 0;
 
   unsigned char desc[MAX_DESCRIPTORS_SIZE];

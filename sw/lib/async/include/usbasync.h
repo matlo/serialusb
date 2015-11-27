@@ -6,6 +6,7 @@
 #ifndef USBASYNC_H_
 #define USBASYNC_H_
 
+#include <libusb-1.0/libusb.h>
 #include <linux/usb/ch9.h>
 
 #ifdef WIN32
@@ -47,15 +48,15 @@ struct p_interface {
 };
 
 struct p_configuration {
-  unsigned char * raw;
+  unsigned char * raw; //descriptor->wTotalLength bytes
   struct usb_config_descriptor * descriptor;
   struct p_interface * interfaces; //descriptor->bNumInterfaces elements
 };
 
 struct p_other {
-  unsigned char type;
-  unsigned char index;
-  unsigned short length;
+  unsigned short wValue;
+  unsigned short wIndex;
+  unsigned short wLength;
   unsigned char * data;
 };
 
@@ -78,7 +79,7 @@ int usbasync_open_ids(unsigned short vendor, unsigned short product);
 s_usb_dev * usbasync_enumerate(unsigned short vendor, unsigned short product);
 void usbasync_free_enumeration(s_usb_dev * usb_devs);
 int usbasync_open_path(const char * path);
-const s_usb_descriptors * usbasync_get_usb_descriptors(int device);
+s_usb_descriptors * usbasync_get_usb_descriptors(int device);
 int usbasync_close(int device);
 int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout);
 int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close, USBASYNC_REGISTER_SOURCE fp_register);

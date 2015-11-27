@@ -324,7 +324,7 @@ static void usb_callback(struct libusb_transfer* transfer) {
   remove_transfer(transfer);
 }
 
-int handle_events(int unused) {
+static int handle_events(int unused) {
 #ifndef WIN32
   return libusb_handle_events(ctx);
 #else
@@ -434,7 +434,7 @@ static int get_configurations (int device) {
   return 0;
 }
 
-static int add_descriptor (int device, unsigned char type, unsigned char index, unsigned short length, unsigned char * data) {
+static int add_descriptor (int device, unsigned short wValue, unsigned short wIndex, unsigned short wLength, unsigned char * data) {
 
   s_usb_descriptors * descriptors = &usbdevices[device].descriptors;
   
@@ -447,9 +447,9 @@ static int add_descriptor (int device, unsigned char type, unsigned char index, 
 
   descriptors->others = ptr;
   memset(descriptors->others + descriptors->nbOthers, 0x00, sizeof(*descriptors->others));
-  descriptors->others[descriptors->nbOthers].type = type;
-  descriptors->others[descriptors->nbOthers].index = index;
-  descriptors->others[descriptors->nbOthers].length = length;
+  descriptors->others[descriptors->nbOthers].wValue = wValue;
+  descriptors->others[descriptors->nbOthers].wIndex = wIndex;
+  descriptors->others[descriptors->nbOthers].wLength = wLength;
   descriptors->others[descriptors->nbOthers].data = data;
   ++descriptors->nbOthers;
   
@@ -485,7 +485,7 @@ static int get_string_descriptor (int device, unsigned char index) {
     return -1;
   }
     
-  return add_descriptor(device, LIBUSB_DT_STRING, index, ret, data);
+  return add_descriptor(device, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], ret, data);
 }
 
 static int probe_interface (int device, unsigned char configurationIndex, struct usb_interface_descriptor * interface) {
@@ -565,7 +565,7 @@ static int probe_hid (int device, unsigned char configurationIndex, struct usb_i
       return -1;
     }
     
-    return add_descriptor(device, LIBUSB_DT_REPORT, 0, ret, data);
+    return add_descriptor(device, (LIBUSB_DT_REPORT << 8), pAltInterface->descriptor->bInterfaceNumber, ret, data);
   }
 
   return 0;
@@ -1036,7 +1036,7 @@ int usbasync_open_path(const char * path) {
   return -1;
 }
 
-const s_usb_descriptors * usbasync_get_usb_descriptors(int device) {
+s_usb_descriptors * usbasync_get_usb_descriptors(int device) {
 
   USBASYNC_CHECK_DEVICE(device, NULL)
 

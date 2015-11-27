@@ -1,0 +1,16 @@
+#CC = i586-mingw32msvc-gcc
+#CXX = i586-mingw32msvc-g++
+#LD = i586-mingw32msvc-g++
+#AR = i586-mingw32msvc-ar
+#WINDRES = i586-mingw32msvc-windres
+
+LD = $(CXX)
+
+#CFLAGS += -Wall -Wextra -Wno-unused-parameter -s -O3
+#CXXFLAGS += -Wall -Wextra -Wno-unused-parameter -s -O3
+#Comment the above two lines and uncomment the below two lines to compile with debug symbols.
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -O0 -g
+CXXFLAGS += -Wall -Wextra -Wno-unused-parameter -O0 -g
+
+LDLIBS += -lusb-1.0 -lXi -lX11 
+CPPFLAGS+=-I../include -Iinclude -Ilib/event/include -Ilib/event/src -Ilib/async/include

@@ -6,7 +6,7 @@
 #include "emu.h"
 
 #include <LUFA/Drivers/Peripheral/Serial.h>
-#include "../protocol.h"
+#include "../include/protocol.h"
 
 #define MAX_CONTROL_TRANSFER_SIZE 64
 
@@ -29,9 +29,7 @@ static s_endpoint endpoints[MAX_ENDPOINTS];
  * Only used in the serial interrupt.
  */
 static uint8_t * pdesc = descriptors;
-#if MAX_DESCRIPTORS > 255 / 5
-static uint8_t * pindex = descIndex;
-#endif
+static uint8_t * pindex = (uint8_t *)descIndex;
 
 /*
  * Only used in the main.
@@ -103,11 +101,7 @@ ISR(USART1_RX_vect) {
     ack(E_TYPE_DESCRIPTORS);
     return;
     l_index:
-#if MAX_DESCRIPTORS > 255 / 5
     READ_VALUE_INC(pindex)
-#else
-    READ_VALUE((uint8_t*)&descIndex)
-#endif
     ack(E_TYPE_INDEX);
     return;
     l_endpoints:
@@ -177,17 +171,14 @@ void EVENT_USB_Device_ConfigurationChanged(void) {
     }
 }
 
-uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue, const uint8_t wIndex,
+uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue, const uint16_t wIndex,
         const void** const DescriptorAddress) {
 
-    const uint8_t DescriptorType = (wValue >> 8);
-    const uint8_t DescriptorNumber = (wValue & 0xFF);
-
-    uintDescIndex i;
-    for (i = 0; i < sizeof(descIndex) / sizeof(*descIndex) && descIndex[i].type; ++i) {
-        if(DescriptorType == descIndex[i].type && DescriptorNumber == descIndex[i].number) {
+    uint8_t i;
+    for (i = 0; i < sizeof(descIndex) / sizeof(*descIndex) && descIndex[i].wValue; ++i) {
+        if(wValue == descIndex[i].wValue && wIndex == descIndex[i].wIndex) {
             *DescriptorAddress = descriptors + descIndex[i].offset;
-            return descIndex[i].size;
+            return descIndex[i].wLength;
         }
     }
 

@@ -3,6 +3,7 @@
 #include <protocol.h>
 #include <stdio.h>
 #include <string.h>
+#include <GE.h>
 
 #define MAX_SERIAL_PACKET_SIZE 256
 
@@ -38,6 +39,48 @@ static int send_data(int serial, unsigned char type, const unsigned char * data,
       return -1;
     }
   } while (count > 0);
+  return 0;
+}
+
+int usb_read_callback(int user, unsigned char endpoint, const void * buf, unsigned int count) {
+
+  //TODO MLA
+  
+  return 0;
+}
+
+int usb_write_callback(int user, unsigned char endpoint, int transfered) {
+
+  //TODO MLA
+  
+  return 0;
+}
+
+int usb_close_callback(int user) {
+
+  //TODO MLA
+  
+  return 0;
+}
+
+int serial_read_callback(int user, unsigned char endpoint, const void * buf, unsigned int count) {
+
+  //TODO MLA
+
+  return 0;
+}
+
+int serial_write_callback(int user, unsigned char endpoint, int transfered) {
+
+  //TODO MLA
+
+  return 0;
+}
+
+int serial_close_callback(int user) {
+
+  //TODO MLA
+
   return 0;
 }
 
@@ -160,6 +203,18 @@ int proxy_init(int usb, int serial) {
   if (ret < 0) {
     return -1;
   }
+
+  ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, GE_AddSource);
+  if (ret < 0) {
+    return -1;
+  }
+
+  ret = serialasync_register(serial, 0, serial_read_callback, serial_write_callback, serial_close_callback, GE_AddSource);
+  if (ret < 0) {
+    return -1;
+  }
+  
+  //TODO MLA: poll 1st IN endpoint
 
   return 0;
 }

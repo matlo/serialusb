@@ -18,10 +18,6 @@
 #include <protocol.h>
 #include <serialproxy.h>
 
-#define PERIOD 5000 //microseconds
-#define RUMBLE_PERIOD 1000000 //microseconds
-#define FF_PERIOD 80000 //microseconds
-
 #ifdef WIN32
 #define REGISTER_FUNCTION GE_AddSourceHandle
 #else
@@ -71,11 +67,6 @@ static void dump(const unsigned char * packet, unsigned char length) {
   printf("\n");
 }
 
-int ignore_event(GE_Event* event) {
-
-  return 0;
-}
-
 char * usb_select() {
 
   char * path = NULL;
@@ -113,7 +104,7 @@ char * usb_select() {
 
 int main(int argc, char* argv[]) {
 
-  if (!GE_initialize(GE_MKB_SOURCE_NONE)) {
+  if (!GE_initialize()) {
     fprintf(stderr, "GE_initialize failed\n");
     exit(-1);
   }

@@ -63,14 +63,14 @@ int usb_close_callback(int user) {
   return 0;
 }
 
-int serial_read_callback(int user, unsigned char endpoint, const void * buf, unsigned int count) {
+int serial_read_callback(int user, const void * buf, unsigned int count) {
 
   //TODO MLA
 
   return 0;
 }
 
-int serial_write_callback(int user, unsigned char endpoint, int transfered) {
+int serial_write_callback(int user, int transfered) {
 
   //TODO MLA
 

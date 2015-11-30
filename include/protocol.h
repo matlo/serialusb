@@ -6,6 +6,8 @@
 #ifndef _PROTOCOL_H_
 #define _PROTOCOL_H_
 
+#include <stdint.h>
+
 #define MAX_DESCRIPTORS_SIZE 1024
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255

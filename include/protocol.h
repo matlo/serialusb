@@ -3,10 +3,17 @@
  License: GPLv3
  */
 
-#ifndef _PROTOCOL_H_
-#define _PROTOCOL_H_
+#ifndef PROTOCOL_H_
+#define PROTOCOL_H_
 
 #include <stdint.h>
+#include <limits.h>
+
+#ifdef WIN32
+#define PACKED __attribute__((gcc_struct, packed))
+#else
+#define PACKED __attribute__((packed))
+#endif
 
 #define MAX_DESCRIPTORS_SIZE 1024
 
@@ -49,5 +56,18 @@ typedef enum {
 
 #define BYTE_LEN_0_BYTE   0x00
 #define BYTE_LEN_1_BYTE   0x01
+
+#define BUFFER_SIZE (UCHAR_MAX+1)
+
+typedef struct PACKED {
+  unsigned char type;
+  unsigned char length;
+} s_header;
+
+typedef struct PACKED
+{
+  s_header header;
+  unsigned char value[BUFFER_SIZE - sizeof(s_header)];
+} s_packet;
 
 #endif

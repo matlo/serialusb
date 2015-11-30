@@ -29,6 +29,8 @@ void GE_RemoveSourceHandle(HANDLE handle);
 #endif
 void GE_RemoveSource(int fd);
 void GE_PumpEvents();
+void GE_TimerStart(int usec);
+void GE_TimerClose();
 
 #ifdef __cplusplus
 }

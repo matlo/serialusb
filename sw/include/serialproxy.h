@@ -3,10 +3,10 @@
  License: GPLv3
  */
 
-#ifndef SW_INCLUDE_SERIALPROXY_H_
-#define SW_INCLUDE_SERIALPROXY_H_
+#ifndef SERIALPROXY_H_
+#define SERIALPROXY_H_
 
-int proxy_init(int usb, int serial);
-int proxy_stop(int serial);
+int proxy_init();
+int proxy_stop();
 
-#endif /* SW_INCLUDE_SERIALPROXY_H_ */
+#endif /* SERIALPROXY_H_ */

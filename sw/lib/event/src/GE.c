@@ -5,6 +5,8 @@
 
 #include <GE.h>
 #include <events.h>
+#include <stddef.h>
+#include <timer.h>
 
 static int initialized = 0;
 
@@ -80,4 +82,40 @@ void GE_RemoveSource(int fd)
 void GE_PumpEvents()
 {
   ev_pump_events();
+}
+
+
+/*
+ * \brief Start a timer to make GE_PumpEvents return periodically.
+ *
+ * \param period  the period of the timer (microseconds).
+ */
+void GE_TimerStart(int usec)
+{
+#ifndef WIN32
+  int tfd = timer_start(usec);
+
+  if(tfd >= 0)
+  {
+    ev_register_source(tfd, 0, &timer_read, NULL, &timer_close);
+  }
+#else
+  timer_start(usec);
+#endif
+}
+
+/*
+ * \brief Stop the timer.
+ */
+void GE_TimerClose()
+{
+#ifndef WIN32
+  int tfd = timer_get();
+
+  if(tfd >= 0)
+  {
+    ev_remove_source(tfd);
+  }
+#endif
+  timer_close(0);
 }

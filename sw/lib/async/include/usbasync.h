@@ -15,15 +15,16 @@
 #define PACKED __attribute__((packed))
 #endif
 
-struct usb_hid_descriptor
-{
+struct usb_hid_descriptor {
   unsigned char bLength;
   unsigned char bDescriptorType;
   unsigned short bcdHID;
   unsigned char bCountryCode;
   unsigned char bNumDescriptors;
-  unsigned char bReportDescriptorType;
-  unsigned short wReportDescriptorLength;
+  struct {
+    unsigned char bReportDescriptorType;
+    unsigned short wReportDescriptorLength;
+  } rdesc[0];
 } PACKED;
 
 typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, unsigned int count);
@@ -85,6 +86,6 @@ int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsign
 int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close, USBASYNC_REGISTER_SOURCE fp_register);
 int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
 int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout);
-int usbasync_print_descriptors(int device);
+int usbasync_print_endpoints (int device);
 
 #endif /* USBASYNC_H_ */

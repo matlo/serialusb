@@ -128,7 +128,7 @@ int proxy_init(int usb, int serial) {
   
   unsigned char configurationIndex;
   for (configurationIndex = 0; configurationIndex < descriptors->device.bNumConfigurations; ++configurationIndex) {
-    unsigned char endpointNumber = 1;
+    unsigned char endpointNumber = 0;
     struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
     unsigned char interfaceIndex;
     for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
@@ -138,23 +138,26 @@ int proxy_init(int usb, int serial) {
         struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
         unsigned char endpointIndex;
         for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
-          if (endpointNumber > MAX_ENDPOINTS) {
-            PRINT_ERROR_OTHER("too many endpoints")
-            return -1;
-          }
+          ++endpointNumber;
           struct usb_endpoint_descriptor * endpoint =
               descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
           // renumber all endpoints
           endpoint->bEndpointAddress = (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) | endpointNumber;
-          ++endpointNumber;
-          if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
-            PRINT_ERROR_OTHER("invalid endpoint size")
-          } else if (configurationIndex == 0) {
-            pEndpoints->number = endpoint->bEndpointAddress;
-            pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
-            pEndpoints->size = endpoint->wMaxPacketSize;
-            ++pEndpoints;
+          if (configurationIndex > 0) {
+            continue;
           }
+          if (endpointNumber > MAX_ENDPOINTS) {
+            printf("endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
+            continue;
+          }
+          if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
+            printf("endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
+            continue;
+          }
+          pEndpoints->number = endpoint->bEndpointAddress;
+          pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+          pEndpoints->size = endpoint->wMaxPacketSize;
+          ++pEndpoints;
         }
       }
     }
@@ -162,7 +165,7 @@ int proxy_init(int usb, int serial) {
   
   printf("modified configurations:\n");
 
-  usbasync_print_descriptors(usb);
+  usbasync_print_endpoints(usb);
 
   unsigned char warn = 0;
 

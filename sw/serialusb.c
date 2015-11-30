@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
 
     printf("Opened device: VID 0x%04x PID 0x%04x PATH %s\n", descriptors->device.idVendor, descriptors->device.idProduct, path);
 
-    usbasync_print_descriptors(usb);
+    usbasync_print_endpoints(usb);
 
     serial = serialasync_open("/dev/ttyUSB0", 500000);
 

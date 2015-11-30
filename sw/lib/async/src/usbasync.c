@@ -15,8 +15,13 @@
 
 #define USBASYNC_OUT_TIMEOUT 20 // ms
 
+#define USBASYNC_DEFAULT_TIMEOUT 1000 // ms
+
 #define IS_ENDPOINT_IN(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
 #define IS_ENDPOINT_OUT(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_OUT)
+#define IS_ENDPOINT_INTERRUPT(endpoint) ((endpoint & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_INTERRUPT)
+#define IS_ENDPOINT_BULK(endpoint) ((endpoint & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_BULK)
+#define IS_ENDPOINT_ISOCHRONOUS(endpoint) ((endpoint & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_ISOCHRONOUS)
 
 #define INVALID_ENDPOINT_INDEX 0xff
 
@@ -275,7 +280,7 @@ int usbasync_poll(int device, unsigned char endpoint) {
   switch (usbdevices[device].endpoints[endpointIndex].type) {
   case LIBUSB_TRANSFER_TYPE_INTERRUPT:
     libusb_fill_interrupt_transfer(transfer, usbdevices[device].devh, endpoint, buf, size,
-        (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, 1000);
+        (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_DEFAULT_TIMEOUT);
     break;
   default:
     PRINT_ERROR_OTHER("unsupported endpoint type")
@@ -350,7 +355,7 @@ static int transfer_timeout(int device, unsigned char endpointIndex, const void 
   switch (usbdevices[device].endpoints[endpointIndex].type) {
   case LIBUSB_TRANSFER_TYPE_INTERRUPT:
     ret = libusb_interrupt_transfer(usbdevices[device].devh, usbdevices[device].endpoints[endpointIndex].address,
-      (void *) buf, count, &transfered, timeout * 1000);
+      (void *) buf, count, &transfered, timeout * USBASYNC_DEFAULT_TIMEOUT);
     if (ret != LIBUSB_SUCCESS && ret != LIBUSB_ERROR_TIMEOUT) {
 
       PRINT_ERROR_LIBUSB("libusb_interrupt_transfer", ret)
@@ -408,7 +413,7 @@ static int get_configurations (int device) {
     
     int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
         LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | index, 0, (unsigned char *)&descriptor,
-        sizeof(descriptor), 1000);
+        sizeof(descriptor), USBASYNC_DEFAULT_TIMEOUT);
     
     if (ret < 0) {
       PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
@@ -425,7 +430,7 @@ static int get_configurations (int device) {
     
     ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
         LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_CONFIG << 8) | index, 0, configurations->raw,
-        descriptor.wTotalLength, 1000);
+        descriptor.wTotalLength, USBASYNC_DEFAULT_TIMEOUT);
     
     if (ret < 0) {
       PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
@@ -469,7 +474,7 @@ static int get_string_descriptor (int device, unsigned char index) {
   }
 
   int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-      LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, DEFAULT_STRING_BUFFER_SIZE, 1000);
+      LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, DEFAULT_STRING_BUFFER_SIZE, USBASYNC_DEFAULT_TIMEOUT);
 
   if (ret < 0) {
     PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
@@ -490,7 +495,7 @@ static int get_string_descriptor (int device, unsigned char index) {
     data = ptr;
 
     ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
-        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, descriptor->bLength, 1000);
+        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | index, descriptors->langId0.wData[0], data, descriptor->bLength, USBASYNC_DEFAULT_TIMEOUT);
     if (ret < 0) {
       PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
       free(data);
@@ -562,23 +567,30 @@ static int probe_hid (int device, unsigned char configurationIndex, struct usb_i
     return -1;
   }
   
+  if (pAltInterface->descriptor->bInterfaceClass != LIBUSB_CLASS_HID) {
+    return 0;
+  }
+  
   pAltInterface->hidDescriptor = hid;
 
-  if (hid->wReportDescriptorLength > 0) {
-    unsigned char * data = calloc(hid->wReportDescriptorLength, sizeof(unsigned char));
-    if (data == NULL) {
-      PRINT_ERROR_ALLOC_FAILED("calloc")
-      return -1;
+  unsigned char rdescIndex;
+  for (rdescIndex = 0; rdescIndex < hid->bNumDescriptors; ++ rdescIndex) {
+    if (hid->rdesc[rdescIndex].wReportDescriptorLength > 0) {
+      unsigned char * data = calloc(hid->rdesc[rdescIndex].wReportDescriptorLength, sizeof(unsigned char));
+      if (data == NULL) {
+        PRINT_ERROR_ALLOC_FAILED("calloc")
+        return -1;
+      }
+      int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN | LIBUSB_RECIPIENT_INTERFACE,
+          LIBUSB_REQUEST_GET_DESCRIPTOR, (hid->rdesc[rdescIndex].bReportDescriptorType << 8) | 0, pAltInterface->descriptor->bInterfaceNumber, data, hid->rdesc[rdescIndex].wReportDescriptorLength, USBASYNC_DEFAULT_TIMEOUT);
+      if (ret < 0) {
+        PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
+        free(data);
+        return -1;
+      }
+      
+      return add_descriptor(device, (hid->rdesc[rdescIndex].bReportDescriptorType << 8), pAltInterface->descriptor->bInterfaceNumber, ret, data);
     }
-    int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN | LIBUSB_RECIPIENT_INTERFACE,
-        LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_REPORT << 8) | 0, pAltInterface->descriptor->bInterfaceNumber, data, hid->wReportDescriptorLength, 1000);
-    if (ret < 0) {
-      PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
-      free(data);
-      return -1;
-    }
-    
-    return add_descriptor(device, (LIBUSB_DT_REPORT << 8), pAltInterface->descriptor->bInterfaceNumber, ret, data);
   }
 
   return 0;
@@ -684,7 +696,7 @@ static int get_device (int device) {
   
   int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
       LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_DEVICE << 8) | 0, 0, (unsigned char *)descriptor,
-      sizeof(*descriptor), 1000);
+      sizeof(*descriptor), USBASYNC_DEFAULT_TIMEOUT);
   
   if (ret < 0) {
     PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
@@ -721,7 +733,7 @@ static void get_lang_id_0 (int device) {
 
   int ret = libusb_control_transfer(usbdevices[device].devh, LIBUSB_ENDPOINT_IN,
       LIBUSB_REQUEST_GET_DESCRIPTOR, (LIBUSB_DT_STRING << 8) | 0, 0, (unsigned char *)descriptor,
-      sizeof(*descriptor), 1000);
+      sizeof(*descriptor), USBASYNC_DEFAULT_TIMEOUT);
   
   if (ret < 0) {
     PRINT_ERROR_LIBUSB("libusb_control_transfer", ret)
@@ -1198,7 +1210,7 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
   return submit_transfer(transfer);
 }
 
-int usbasync_print_descriptors (int device) {
+int usbasync_print_endpoints (int device) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
@@ -1215,10 +1227,17 @@ int usbasync_print_descriptors (int device) {
         printf("  interface: %hhu:%hhu\n", pAltInterface->descriptor->bInterfaceNumber, pAltInterface->descriptor->bAlternateSetting);
         unsigned char endpointIndex;
         for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
-          printf("    endpoint: 0x%02x\n", pAltInterface->endpoints[endpointIndex]->bEndpointAddress);
+          printf("    endpoint:");
+          printf(" %d", pAltInterface->endpoints[endpointIndex]->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK);
+          printf(" %s", IS_ENDPOINT_IN(pAltInterface->endpoints[endpointIndex]->bEndpointAddress) ? "IN" : "OUT");
+          printf(" %s",
+              IS_ENDPOINT_INTERRUPT(pAltInterface->endpoints[endpointIndex]->bmAttributes) ? "INTERRUPT" :
+              IS_ENDPOINT_BULK(pAltInterface->endpoints[endpointIndex]->bmAttributes) ? "BULK" :
+              IS_ENDPOINT_ISOCHRONOUS(pAltInterface->endpoints[endpointIndex]->bmAttributes) ?
+                  "ISOCHRONOUS" : "UNKNOWN");
+          printf("\n");
         }
       }
-
     }
   }
   return 0;

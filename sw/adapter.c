@@ -7,6 +7,9 @@
 #include <serialasync.h>
 #include <string.h>
 #include <stdio.h>
+#include <GE.h>
+
+#define BAUDRATE 500000
 
 #define MAX_ADAPTERS 7
 
@@ -16,7 +19,7 @@ static struct {
   s_packet packet;
   unsigned int bread;
   int serial;
-  ADAPTER_PACKET_CALLBACK fp_packet_cb;
+  ADAPTER_READ_CALLBACK fp_packet_cb;
 } adapters[MAX_ADAPTERS];
 
 void adapter_init(void) __attribute__((constructor (101)));
@@ -82,7 +85,7 @@ int adapter_recv(int adapter, const void * buf, unsigned int count) {
   return ret;
 }
 
-int adapter_send(int adapter, unsigned char type, const unsigned char * data, unsigned int count, unsigned int timeout) {
+int adapter_send(int adapter, unsigned char type, const unsigned char * data, unsigned int count) {
 
   ADAPTER_CHECK(adapter, -1)
 
@@ -105,12 +108,7 @@ int adapter_send(int adapter, unsigned char type, const unsigned char * data, un
     data += length;
     count -= length;
 
-    int ret;
-    if(timeout > 0) {
-      ret = serialasync_write_timeout(adapters[adapter].serial, &packet, 2 + length, timeout);
-    } else {
-      ret = serialasync_write(adapters[adapter].serial, &packet, 2 + length);
-    }
+    int ret = serialasync_write(adapters[adapter].serial, &packet, 2 + length);
     if(ret < 0) {
       return -1;
     }
@@ -119,16 +117,27 @@ int adapter_send(int adapter, unsigned char type, const unsigned char * data, un
   return 0;
 }
 
-int adapter_add(int serial, ADAPTER_PACKET_CALLBACK fp_packet_cb) {
+int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE_CALLBACK fp_write, ADAPTER_CLOSE_CALLBACK fp_close) {
+
+  int serial = serialasync_open(port, BAUDRATE);
+  if (serial < 0) {
+    return -1;
+  }
 
   unsigned int i;
   for (i = 0; i < sizeof(adapters) / sizeof(*adapters); ++i) {
     if (adapters[i].serial < 0) {
       adapters[i].serial = serial;
-      adapters[i].fp_packet_cb = fp_packet_cb;
+      adapters[i].fp_packet_cb = fp_read;
+      int ret = serialasync_register(serial, i, adapter_recv, fp_write, fp_close, GE_AddSource);
+      if (ret < 0) {
+        return -1;
+      }
       return i;
     }
   }
+
+  serialasync_close(serial);
 
   return -1;
 }

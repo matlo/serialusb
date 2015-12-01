@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
 
   if (!GE_initialize()) {
     fprintf(stderr, "GE_initialize failed\n");
-    exit(-1);
+    return -1;
   }
 
   (void) signal(SIGINT, terminate);
@@ -80,5 +80,5 @@ int main(int argc, char* argv[]) {
 
   printf("Exiting\n");
 
-  return 0;
+  return ret;
 }

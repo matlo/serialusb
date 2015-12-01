@@ -9,17 +9,53 @@
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
 
+static enum {
+  E_STATE_INIT,
+  E_STATE_DESCRIPTORS,
+  E_STATE_INDEX,
+  E_STATE_ENDPOINTS,
+  E_STATE_PROXY
+} state = E_STATE_INIT;
+
 static int usb = -1;
-static int serial = -1;
 static int adapter = -1;
+
+static s_usb_descriptors * descriptors = NULL;
+static unsigned char desc[MAX_DESCRIPTORS_SIZE] = {};
+static unsigned char * pDesc = desc;
+static s_descIndex descIndex[MAX_DESCRIPTORS] = {};
+static s_descIndex * pDescIndex = descIndex;
+static s_endpoint endpoints[MAX_ENDPOINTS] = {};
+static s_endpoint * pEndpoints = endpoints;
+
+static uint8_t inEndpoints[MAX_ENDPOINTS] = {};
+static uint8_t inEndpointNumber = 0;
+static uint8_t endpointMap[LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+static uint8_t inPending = 0;
 
 #define TRACE printf("%s\n", __func__);
 
-int usb_read_callback(int user, unsigned char endpoint, const void * buf, unsigned int count) {
+int usb_read_callback(int user, unsigned char endpoint, const void * buf, int transfered) {
 
-  TRACE
-  //TODO MLA
-  
+  if (transfered < 0) {
+    return 1;
+  }
+
+  if (inPending != 0) {
+    //TODO MLA
+    printf("damnit\n");
+  }
+
+  s_epData epData = { .endpoint = endpoints[endpointMap[(endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1]].number };
+  memcpy(epData.data, buf, transfered);
+
+  int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&epData, transfered + 1);
+  if(ret < 0) {
+    return 1;
+  }
+
+  inPending = endpoint;
+
   return 0;
 }
 
@@ -51,53 +87,7 @@ static void dump(const unsigned char * packet, unsigned char length) {
   printf("\n");
 }
 
-static int process_packet(int user, s_packet * packet)
-{
-  unsigned char type = packet->header.type;
-  unsigned char length = packet->header.length;
-  unsigned char * data = packet->value;
-
-  int ret = 0;
-
-  switch (packet->header.type) {
-  /*case E_TYPE_CONTROL:
-    //TODO MLA
-    break;
-  case E_TYPE_OUT:
-    //TODO MLA
-    break;
-  case E_TYPE_DEBUG:
-    {
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
-      printf("%ld.%06ld debug packet received (size = %d bytes)\n", tv.tv_sec, tv.tv_usec, length);
-      dump(data, length);
-    }
-    break;
-  case E_TYPE_RESET:
-    //TODO MLA
-    break;*/
-  default:
-    {
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
-          fprintf(stderr, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
-      fprintf(stderr, "unhandled packet (type=0x%02x)\n", type);
-    }
-    break;
-  }
-
-  return ret;
-}
-
-int serial_read_callback(int user, const void * buf, unsigned int count) {
-
-  printf("%s\n", __func__);
-
-  return adapter_recv(adapter, buf, count);
-}
-
-int serial_write_callback(int user, int transfered) {
+int adapter_send_callback(int user, int transfered) {
 
   if (transfered < 0) {
     return 1;
@@ -106,7 +96,7 @@ int serial_write_callback(int user, int transfered) {
   return 0;
 }
 
-int serial_close_callback(int user) {
+int adapter_close_callback(int user) {
 
   return 1;
 }
@@ -159,6 +149,174 @@ static char * usb_select() {
   return path;
 }
 
+void fix_endpoints() {
+
+  pEndpoints = endpoints;
+
+  unsigned char configurationIndex;
+  for (configurationIndex = 0; configurationIndex < descriptors->device.bNumConfigurations; ++configurationIndex) {
+    unsigned char endpointNumber = 0;
+    struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
+    unsigned char interfaceIndex;
+    for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
+      struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
+      unsigned char altInterfaceIndex;
+      for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
+        struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
+        unsigned char endpointIndex;
+        for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
+          ++endpointNumber;
+          struct usb_endpoint_descriptor * endpoint =
+              descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
+          uint8_t originalEndpoint = endpoint->bEndpointAddress;
+          endpoint->bEndpointAddress = (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) | endpointNumber;
+          if ((originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) == 0) {
+            PRINT_ERROR_OTHER("invalid endpoint number")
+            continue;
+          }
+          if (configurationIndex > 0) {
+            continue;
+          }
+          if (endpointNumber > MAX_ENDPOINTS) {
+            printf("endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
+            continue;
+          }
+          if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
+            printf("endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
+            continue;
+          }
+          if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) {
+            inEndpoints[inEndpointNumber++] = originalEndpoint;
+            endpointMap[(originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1] = endpointNumber - 1;
+          }
+          pEndpoints->number = endpoint->bEndpointAddress;
+          pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+          pEndpoints->size = endpoint->wMaxPacketSize;
+          ++pEndpoints;
+        }
+      }
+    }
+  }
+
+  printf("fixed endpoints:\n");
+
+  usbasync_print_endpoints(usb);
+}
+
+int send_descriptors() {
+
+  descriptors->device.bMaxPacketSize0 = MAX_PACKET_SIZE_EP0;
+
+  unsigned char warn = 0;
+
+  ADD_DESCRIPTOR((LIBUSB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
+  ADD_DESCRIPTOR((LIBUSB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)
+
+  unsigned int descNumber;
+  for(descNumber = 0; descNumber < descriptors->device.bNumConfigurations; ++descNumber) {
+
+    ADD_DESCRIPTOR((LIBUSB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw)
+  }
+
+  for(descNumber = 0; descNumber < descriptors->nbOthers; ++descNumber) {
+
+    ADD_DESCRIPTOR(descriptors->others[descNumber].wValue, descriptors->others[descNumber].wIndex, descriptors->others[descNumber].wLength, descriptors->others[descNumber].data)
+  }
+
+  if (warn) {
+    PRINT_ERROR_OTHER("unable to add all descriptors")
+  }
+
+  int ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc);
+  if (ret < 0) {
+    return -1;
+  }
+
+  return 0;
+}
+
+static int send_index() {
+
+  return adapter_send(adapter, E_TYPE_INDEX, (unsigned char *)&descIndex, (pDescIndex - descIndex) * sizeof(*descIndex));
+}
+
+static int send_endpoints() {
+
+  return adapter_send(adapter, E_TYPE_ENDPOINTS, (unsigned char *)&endpoints, (pEndpoints - endpoints) * sizeof(*endpoints));
+}
+
+static int process_packet(int user, s_packet * packet)
+{
+  unsigned char type = packet->header.type;
+  unsigned char length = packet->header.length;
+  unsigned char * data = packet->value;
+
+  int ret = 0;
+
+  switch (packet->header.type) {
+  case E_TYPE_DESCRIPTORS:
+    if (state == E_STATE_DESCRIPTORS) {
+      ret = send_index();
+      state = E_STATE_INDEX;
+    } else {
+      return -1;
+    }
+    break;
+  case E_TYPE_INDEX:
+    if (state == E_STATE_INDEX) {
+      ret = send_endpoints();
+      state = E_STATE_ENDPOINTS;
+    } else {
+      return -1;
+    }
+    break;
+  case E_TYPE_ENDPOINTS:
+    if (state == E_STATE_ENDPOINTS) {
+      unsigned char i;
+      for (i = 0; i < inEndpointNumber && ret >= 0; ++i) {
+        ret = usbasync_poll(usb, inEndpoints[i]);
+      }
+      state = E_STATE_PROXY;
+    }
+    break;
+  case E_TYPE_IN:
+    if(state == E_STATE_PROXY) {
+      if (inPending > 0) {
+        ret = usbasync_poll(usb, inPending);
+        inPending = 0;
+      }
+    }
+    break;
+  /*case E_TYPE_CONTROL:
+    //TODO MLA
+    break;
+  case E_TYPE_OUT:
+    //TODO MLA
+    break;
+  case E_TYPE_DEBUG:
+    {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+      printf("%ld.%06ld debug packet received (size = %d bytes)\n", tv.tv_sec, tv.tv_usec, length);
+      dump(data, length);
+    }
+    break;
+  case E_TYPE_RESET:
+    //TODO MLA
+    break;*/
+  default:
+    {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+          fprintf(stderr, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
+      fprintf(stderr, "unhandled packet (type=0x%02x)\n", type);
+    }
+    break;
+  }
+
+  return ret;
+}
+
 int proxy_init() {
 
   char * path = usb_select();
@@ -170,153 +328,62 @@ int proxy_init() {
 
   usb = usbasync_open_path(path);
 
+  if (usb < 0) {
+    free(path);
+    return -1;
+  }
+
+  descriptors = usbasync_get_usb_descriptors(usb);
+  if (descriptors == NULL) {
+    free(path);
+    return -1;
+  }
+
+  printf("Opened device: VID 0x%04x PID 0x%04x PATH %s\n", descriptors->device.idVendor, descriptors->device.idProduct, path);
+
   free(path);
 
-  if (usb >= 0) {
+  if (descriptors->device.bNumConfigurations == 0) {
+    PRINT_ERROR_OTHER("missing configuration")
+    return -1;
+  }
 
-    const s_usb_descriptors * descriptors = usbasync_get_usb_descriptors(usb);
+  if (descriptors->configurations[0].descriptor->bNumInterfaces == 0) {
+    PRINT_ERROR_OTHER("missing interface")
+    return -1;
+  }
 
-    printf("Opened device: VID 0x%04x PID 0x%04x PATH %s\n", descriptors->device.idVendor, descriptors->device.idProduct, path);
+  if (descriptors->configurations[0].interfaces[0].bNumAltInterfaces == 0) {
+    PRINT_ERROR_OTHER("missing altInterface")
+    return -1;
+  }
 
-    printf("original endpoints:\n");
+  if (descriptors->configurations[0].interfaces[0].altInterfaces[0].bNumEndpoints == 0) {
+    PRINT_ERROR_OTHER("missing endpoint")
+    return -1;
+  }
 
-    usbasync_print_endpoints(usb);
+  printf("original endpoints:\n");
 
-    serial = serialasync_open("/dev/ttyUSB0", 500000);
+  usbasync_print_endpoints(usb);
 
-    if (serial >= 0) {
+  adapter = adapter_open("/dev/ttyUSB0", process_packet, adapter_send_callback, adapter_close_callback);
 
-      adapter = adapter_add(serial, process_packet);
+  if(adapter < 0) {
+    return -1;
+  }
 
-      if(adapter >= 0) {
+  fix_endpoints();
 
-        s_usb_descriptors * descriptors = usbasync_get_usb_descriptors(usb);
+  if (send_descriptors() < 0) {
+    return -1;
+  }
 
-        if (descriptors->device.bNumConfigurations == 0) {
-          PRINT_ERROR_OTHER("missing configuration")
-          return -1;
-        }
+  state = E_STATE_DESCRIPTORS;
 
-        if (descriptors->configurations[0].descriptor->bNumInterfaces == 0) {
-          PRINT_ERROR_OTHER("missing interface")
-          return -1;
-        }
-
-        if (descriptors->configurations[0].interfaces[0].bNumAltInterfaces == 0) {
-          PRINT_ERROR_OTHER("missing altInterface")
-          return -1;
-        }
-
-        if (descriptors->configurations[0].interfaces[0].altInterfaces[0].bNumEndpoints == 0) {
-          PRINT_ERROR_OTHER("missing endpoint")
-          return -1;
-        }
-
-        descriptors->device.bMaxPacketSize0 = MAX_PACKET_SIZE_EP0;
-
-        s_endpoint endpoints[MAX_ENDPOINTS] = {};
-        s_endpoint * pEndpoints = endpoints;
-
-        unsigned char configurationIndex;
-        for (configurationIndex = 0; configurationIndex < descriptors->device.bNumConfigurations; ++configurationIndex) {
-          unsigned char endpointNumber = 0;
-          struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
-          unsigned char interfaceIndex;
-          for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
-            struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
-            unsigned char altInterfaceIndex;
-            for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
-              struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
-              unsigned char endpointIndex;
-              for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
-                ++endpointNumber;
-                struct usb_endpoint_descriptor * endpoint =
-                    descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
-                // renumber all endpoints
-                endpoint->bEndpointAddress = (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) | endpointNumber;
-                if (configurationIndex > 0) {
-                  continue;
-                }
-                if (endpointNumber > MAX_ENDPOINTS) {
-                  printf("endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
-                  continue;
-                }
-                if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
-                  printf("endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
-                  continue;
-                }
-                pEndpoints->number = endpoint->bEndpointAddress;
-                pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
-                pEndpoints->size = endpoint->wMaxPacketSize;
-                ++pEndpoints;
-              }
-            }
-          }
-        }
-
-        printf("modified endpoints:\n");
-
-        usbasync_print_endpoints(usb);
-
-        unsigned char warn = 0;
-
-        unsigned char desc[MAX_DESCRIPTORS_SIZE];
-        unsigned char * pDesc = desc;
-        s_descIndex descIndex[MAX_DESCRIPTORS];
-        s_descIndex * pDescIndex = descIndex;
-
-        ADD_DESCRIPTOR((LIBUSB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
-        ADD_DESCRIPTOR((LIBUSB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)
-
-        unsigned int descNumber;
-        for(descNumber = 0; descNumber < descriptors->device.bNumConfigurations; ++descNumber) {
-
-          ADD_DESCRIPTOR((LIBUSB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw)
-        }
-
-        for(descNumber = 0; descNumber < descriptors->nbOthers; ++descNumber) {
-
-          ADD_DESCRIPTOR(descriptors->others[descNumber].wValue, descriptors->others[descNumber].wIndex, descriptors->others[descNumber].wLength, descriptors->others[descNumber].data)
-        }
-
-        if (warn) {
-          PRINT_ERROR_OTHER("unable to add all descriptors")
-        }
-
-        int ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc, 1);
-        if (ret < 0) {
-          return -1;
-        }
-
-        ret = adapter_send(adapter, E_TYPE_INDEX, (unsigned char *)&descIndex, (pDescIndex - descIndex) * sizeof(*descIndex), 1);
-        if (ret < 0) {
-          return -1;
-        }
-
-        ret = adapter_send(adapter, E_TYPE_ENDPOINTS, (unsigned char *)&endpoints, (pEndpoints - endpoints) * sizeof(*endpoints), 1);
-        if (ret < 0) {
-          return -1;
-        }
-
-        ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, GE_AddSource);
-        if (ret < 0) {
-          return -1;
-        }
-
-        ret = serialasync_register(serial, adapter, serial_read_callback, serial_write_callback, serial_close_callback, GE_AddSource);
-        if (ret < 0) {
-          return -1;
-        }
-
-        //TODO MLA: poll 1st IN endpoint
-      } else {
-
-        fprintf(stderr, "error adding adapter\n");
-      }
-    } else {
-
-      fprintf(stderr, "error opening serial device\n");
-    }
+  int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, GE_AddSource);
+  if (ret < 0) {
+    return -1;
   }
 
   return 0;
@@ -324,9 +391,12 @@ int proxy_init() {
 
 int proxy_stop(int serial) {
 
-  adapter_send(serial, E_TYPE_RESET, NULL, 0, 1);
-  serialasync_close(serial);
-  usbasync_close(usb);
+  if (adapter >= 0) {
+    adapter_send(adapter, E_TYPE_RESET, NULL, 0);
+  }
+  if (usb >= 0) {
+    usbasync_close(usb);
+  }
 
   return 0;
 }

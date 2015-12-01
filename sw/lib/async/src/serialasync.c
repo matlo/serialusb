@@ -145,7 +145,7 @@ speed_t get_baudrate(unsigned int baudrate) {
  * \return the identifier of the opened device (to be used in further operations), \
  * or -1 in case of failure (e.g. no device found).
  */
-int serialasync_open(char * port, unsigned int baudrate) {
+int serialasync_open(const char * port, unsigned int baudrate) {
 
   int device = async_open_path(port, 1);
   

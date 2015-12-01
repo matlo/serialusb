@@ -32,9 +32,14 @@ static struct {
   libusb_device_handle * devh;
   s_usb_descriptors descriptors;
   struct {
-    unsigned char address;
-    unsigned char type;
-    unsigned short size;
+    struct {
+      unsigned char type;
+      unsigned short size;
+    } in;
+    struct {
+      unsigned char type;
+      unsigned short size;
+    } out;
   } endpoints[LIBUSB_ENDPOINT_ADDRESS_MASK];
   struct {
     int user;
@@ -165,19 +170,33 @@ static inline unsigned char get_endpoint(int device, unsigned char endpoint, uns
     return INVALID_ENDPOINT_INDEX;
   }
   
-  if (endpoint != usbdevices[device].endpoints[endpointIndex].address) {
-  
-    PRINT_ERROR_INVALID_ENDPOINT("no such endpoint", endpoint)
-    return INVALID_ENDPOINT_INDEX;
-  }
+  --endpointIndex;
 
-  if (count > usbdevices[device].endpoints[endpointIndex].size) {
+  if (IS_ENDPOINT_IN(endpoint)) {
 
-    PRINT_ERROR_OTHER("incorrect transfer size")
-    return INVALID_ENDPOINT_INDEX;
+    if(usbdevices[device].endpoints[endpointIndex].in.type == 0) {
+      PRINT_ERROR_INVALID_ENDPOINT("no such endpoint", endpoint)
+      return INVALID_ENDPOINT_INDEX;
+    }
+    if (count > usbdevices[device].endpoints[endpointIndex].in.size) {
+
+      PRINT_ERROR_OTHER("incorrect transfer size")
+      return INVALID_ENDPOINT_INDEX;
+    }
+  } else {
+
+    if(usbdevices[device].endpoints[endpointIndex].out.type == 0) {
+      PRINT_ERROR_INVALID_ENDPOINT("no such endpoint", endpoint)
+      return INVALID_ENDPOINT_INDEX;
+    }
+    if (count > usbdevices[device].endpoints[endpointIndex].out.size) {
+
+      PRINT_ERROR_OTHER("incorrect transfer size")
+      return INVALID_ENDPOINT_INDEX;
+    }
   }
   
-  return endpointIndex - 1;
+  return endpointIndex;
 }
 #define GET_ENDPOINT(device,endpoint,direction,count) \
         get_endpoint(device, endpoint, direction, count, __FILE__, __LINE__, __func__);
@@ -254,13 +273,13 @@ int usbasync_poll(int device, unsigned char endpoint) {
     return -1;
   }
 
-  if (usbdevices[device].callback.fp_write == NULL) {
+  if (usbdevices[device].callback.fp_read == NULL) {
 
-    PRINT_ERROR_OTHER("missing write callback")
+    PRINT_ERROR_OTHER("missing read callback")
     return -1;
   }
   
-  unsigned int size = usbdevices[device].endpoints[endpointIndex].size;
+  unsigned int size = usbdevices[device].endpoints[endpointIndex].in.size;
 
   unsigned char * buf = calloc(size, sizeof(char));
   if (buf == NULL) {
@@ -277,10 +296,10 @@ int usbasync_poll(int device, unsigned char endpoint) {
     return -1;
   }
 
-  switch (usbdevices[device].endpoints[endpointIndex].type) {
+  switch (usbdevices[device].endpoints[endpointIndex].in.type) {
   case LIBUSB_TRANSFER_TYPE_INTERRUPT:
     libusb_fill_interrupt_transfer(transfer, usbdevices[device].devh, endpoint, buf, size,
-        (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_DEFAULT_TIMEOUT);
+        (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, 0);
     break;
   default:
     PRINT_ERROR_OTHER("unsupported endpoint type")
@@ -347,14 +366,23 @@ static int handle_events(int unused) {
 #endif
 }
 
-static int transfer_timeout(int device, unsigned char endpointIndex, const void * buf, unsigned int count, unsigned int timeout) {
+static int transfer_timeout(int device, unsigned char endpointIndex, unsigned char direction, const void * buf, unsigned int count, unsigned int timeout) {
 
   int transfered = -1;
   
+  uint8_t endpointAddress = (endpointIndex + 1) | direction;
+
+  uint8_t type;
+  if (direction == LIBUSB_ENDPOINT_IN) {
+    type = usbdevices[device].endpoints[endpointIndex].in.type;
+  } else {
+    type = usbdevices[device].endpoints[endpointIndex].out.type;
+  }
+
   int ret = -1;
-  switch (usbdevices[device].endpoints[endpointIndex].type) {
+  switch (type) {
   case LIBUSB_TRANSFER_TYPE_INTERRUPT:
-    ret = libusb_interrupt_transfer(usbdevices[device].devh, usbdevices[device].endpoints[endpointIndex].address,
+    ret = libusb_interrupt_transfer(usbdevices[device].devh, endpointAddress,
       (void *) buf, count, &transfered, timeout * USBASYNC_DEFAULT_TIMEOUT);
     if (ret != LIBUSB_SUCCESS && ret != LIBUSB_ERROR_TIMEOUT) {
 
@@ -380,20 +408,20 @@ int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf,
     return -1;
   }
 
-  return transfer_timeout(device, endpointIndex, buf, count, timeout);
+  return transfer_timeout(device, endpointIndex, LIBUSB_ENDPOINT_OUT, buf, count, timeout);
 }
 
 int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
-  unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, count)
+  unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_IN, count)
   if(endpointIndex == INVALID_ENDPOINT_INDEX) {
   
     return -1;
   }
 
-  return transfer_timeout(device, endpointIndex, buf, count, timeout);
+  return transfer_timeout(device, endpointIndex, LIBUSB_ENDPOINT_IN, buf, count, timeout);
 }
 
 static int get_configurations (int device) {
@@ -613,6 +641,19 @@ static int probe_endpoint (int device, unsigned char configurationIndex, struct 
   memset(pAltInterface->endpoints + pAltInterface->bNumEndpoints, 0x00, sizeof(*pAltInterface->endpoints));
   pAltInterface->endpoints[pAltInterface->bNumEndpoints] = endpoint;
   ++pAltInterface->bNumEndpoints;
+
+  uint16_t size = endpoint->wMaxPacketSize;
+  uint8_t type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+  uint8_t endpointNumber = endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK;
+  if (endpointNumber > 0) {
+    if (IS_ENDPOINT_IN(endpoint->bEndpointAddress)) {
+      usbdevices[device].endpoints[endpointNumber - 1].in.type = type;
+      usbdevices[device].endpoints[endpointNumber - 1].in.size = size;
+    } else {
+      usbdevices[device].endpoints[endpointNumber - 1].out.type = type;
+      usbdevices[device].endpoints[endpointNumber - 1].out.size = size;
+    }
+  }
 
   return 0;
 }

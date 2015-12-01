@@ -27,7 +27,7 @@ struct usb_hid_descriptor {
   } rdesc[0];
 } PACKED;
 
-typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, unsigned int count);
+typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, int transfered);
 typedef int (* USBASYNC_WRITE_CALLBACK)(int user, unsigned char endpoint, int transfered);
 typedef int (* USBASYNC_CLOSE_CALLBACK)(int user);
 #ifndef WIN32
@@ -87,5 +87,6 @@ int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBA
 int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
 int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout);
 int usbasync_print_endpoints (int device);
+int usbasync_poll(int device, unsigned char endpoint);
 
 #endif /* USBASYNC_H_ */

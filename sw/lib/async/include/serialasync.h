@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-int serialasync_open(char * portname, unsigned int baudrate);
+int serialasync_open(const char * portname, unsigned int baudrate);
 int serialasync_close(int device);
 int serialasync_read_timeout(int device, void * buf, unsigned int count, unsigned int timeout);
 int serialasync_set_read_size(int device, unsigned int size);

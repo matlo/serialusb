@@ -23,7 +23,7 @@
 #define REGISTER_FUNCTION GE_AddSource
 #endif
 
-static volatile int done = 0;
+volatile int done = 0;
 
 static void terminate(int sig) {
   done = 1;

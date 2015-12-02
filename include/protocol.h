@@ -25,23 +25,23 @@
 
 #define MAX_PAYLOAD_SIZE_EP 64 // for non-control endpoints
 
-typedef struct __attribute__((packed)) {
+typedef struct PACKED {
   uint16_t offset;
   uint16_t wValue;
   uint16_t wIndex;
   uint16_t wLength;
-} s_descIndex;
+} s_descriptorIndex;
 
-typedef struct __attribute__((packed)) {
+typedef struct PACKED {
   uint8_t number; // 0 means end of table
   uint8_t type;
   uint8_t size;
-} s_endpoint;
+} s_endpointConfig;
 
-typedef struct __attribute__((packed)) {
+typedef struct PACKED {
   uint8_t endpoint; // 0 means nothing to send
   uint8_t data[MAX_PAYLOAD_SIZE_EP];
-} s_epData; // should not exceed 255 bytes
+} s_endpointPacket; // should not exceed 255 bytes
 
 typedef enum {
   E_TYPE_DESCRIPTORS,

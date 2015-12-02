@@ -9,52 +9,103 @@
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
 
-static enum {
-  E_STATE_INIT,
-  E_STATE_DESCRIPTORS,
-  E_STATE_INDEX,
-  E_STATE_ENDPOINTS,
-  E_STATE_PROXY
-} state = E_STATE_INIT;
-
 static int usb = -1;
 static int adapter = -1;
 
 static s_usb_descriptors * descriptors = NULL;
 static unsigned char desc[MAX_DESCRIPTORS_SIZE] = {};
 static unsigned char * pDesc = desc;
-static s_descIndex descIndex[MAX_DESCRIPTORS] = {};
-static s_descIndex * pDescIndex = descIndex;
-static s_endpoint endpoints[MAX_ENDPOINTS] = {};
-static s_endpoint * pEndpoints = endpoints;
+static s_descriptorIndex descIndex[MAX_DESCRIPTORS] = {};
+static s_descriptorIndex * pDescIndex = descIndex;
+static s_endpointConfig endpoints[MAX_ENDPOINTS] = {};
+static s_endpointConfig * pEndpoints = endpoints;
 
 static uint8_t inEndpoints[MAX_ENDPOINTS] = {};
 static uint8_t inEndpointNumber = 0;
 static uint8_t endpointMap[LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
 static uint8_t inPending = 0;
 
+static struct {
+  unsigned short length;
+  s_endpointPacket packet;
+} inEnpointPackets[MAX_ENDPOINTS] = {};
+static uint8_t nbEpInData = 0;
+
 #define TRACE printf("%s\n", __func__);
+
+extern volatile int done;
+
+static void set_done() {
+  done = 1;
+}
+
+static int send_next_in_packet() {
+
+  if (inPending) {
+    return 0;
+  }
+
+  if (nbEpInData > 0) {
+    int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&inEnpointPackets->packet, inEnpointPackets->length);
+    if(ret < 0) {
+      return -1;
+    }
+    inPending = inEnpointPackets->packet.endpoint;
+    memmove(inEnpointPackets, inEnpointPackets + 1, (--nbEpInData) * sizeof(*inEnpointPackets));
+  }
+
+  return 0;
+}
+
+static int queue_in_packet(unsigned char endpointAddress, const void * buf, int transfered) {
+
+
+  if (nbEpInData == sizeof(inEnpointPackets) / sizeof(*inEnpointPackets)) {
+    PRINT_ERROR_OTHER("no slot available")
+    return -1;
+  }
+
+  inEnpointPackets[nbEpInData].packet.endpoint = endpoints[endpointMap[endpointAddress - 1]].number;
+  memcpy(inEnpointPackets[nbEpInData].packet.data, buf, transfered);
+  inEnpointPackets[nbEpInData].length = transfered + 1;
+  ++nbEpInData;
+
+  return 0;
+}
 
 int usb_read_callback(int user, unsigned char endpoint, const void * buf, int transfered) {
 
   if (transfered < 0) {
-    return 1;
+    set_done();
+    return -1;
   }
 
-  if (inPending != 0) {
+  uint8_t endpointAddress = endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK;
+
+  if (endpointAddress == 0) {
+
     //TODO MLA
-    printf("damnit\n");
+
+  } else {
+
+    if (transfered > MAX_PAYLOAD_SIZE_EP) {
+      PRINT_ERROR_OTHER("too many bytes transfered")
+      set_done();
+      return -1;
+    }
+
+    int ret = queue_in_packet(endpointAddress, buf, transfered);
+    if (ret < 0) {
+      set_done();
+      return -1;
+    }
+
+    ret = send_next_in_packet();
+    if (ret < 0) {
+      set_done();
+      return -1;
+    }
   }
-
-  s_epData epData = { .endpoint = endpoints[endpointMap[(endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1]].number };
-  memcpy(epData.data, buf, transfered);
-
-  int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&epData, transfered + 1);
-  if(ret < 0) {
-    return 1;
-  }
-
-  inPending = endpoint;
 
   return 0;
 }
@@ -69,9 +120,7 @@ int usb_write_callback(int user, unsigned char endpoint, int transfered) {
 
 int usb_close_callback(int user) {
 
-  TRACE
-  //TODO MLA
-  
+  set_done();
   return 1;
 }
 
@@ -90,6 +139,7 @@ static void dump(const unsigned char * packet, unsigned char length) {
 int adapter_send_callback(int user, int transfered) {
 
   if (transfered < 0) {
+    set_done();
     return 1;
   }
 
@@ -98,6 +148,7 @@ int adapter_send_callback(int user, int transfered) {
 
 int adapter_close_callback(int user) {
 
+  set_done();
   return 1;
 }
 
@@ -203,9 +254,12 @@ void fix_endpoints() {
   usbasync_print_endpoints(usb);
 }
 
-int send_descriptors() {
+void fix_device() {
 
   descriptors->device.bMaxPacketSize0 = MAX_PACKET_SIZE_EP0;
+}
+
+int send_descriptors() {
 
   unsigned char warn = 0;
 
@@ -245,6 +299,16 @@ static int send_endpoints() {
   return adapter_send(adapter, E_TYPE_ENDPOINTS, (unsigned char *)&endpoints, (pEndpoints - endpoints) * sizeof(*endpoints));
 }
 
+static int poll_all_endpoints() {
+
+  int ret = 0;
+  unsigned char i;
+  for (i = 0; i < inEndpointNumber && ret >= 0; ++i) {
+    ret = usbasync_poll(usb, inEndpoints[i]);
+  }
+  return ret;
+}
+
 static int process_packet(int user, s_packet * packet)
 {
   unsigned char type = packet->header.type;
@@ -255,35 +319,20 @@ static int process_packet(int user, s_packet * packet)
 
   switch (packet->header.type) {
   case E_TYPE_DESCRIPTORS:
-    if (state == E_STATE_DESCRIPTORS) {
-      ret = send_index();
-      state = E_STATE_INDEX;
-    } else {
-      return -1;
-    }
+    ret = send_index();
     break;
   case E_TYPE_INDEX:
-    if (state == E_STATE_INDEX) {
-      ret = send_endpoints();
-      state = E_STATE_ENDPOINTS;
-    } else {
-      return -1;
-    }
+    ret = send_endpoints();
     break;
   case E_TYPE_ENDPOINTS:
-    if (state == E_STATE_ENDPOINTS) {
-      unsigned char i;
-      for (i = 0; i < inEndpointNumber && ret >= 0; ++i) {
-        ret = usbasync_poll(usb, inEndpoints[i]);
-      }
-      state = E_STATE_PROXY;
-    }
+    ret = poll_all_endpoints();
     break;
   case E_TYPE_IN:
-    if(state == E_STATE_PROXY) {
-      if (inPending > 0) {
-        ret = usbasync_poll(usb, inPending);
-        inPending = 0;
+    if (inPending > 0) {
+      ret = usbasync_poll(usb, inPending);
+      inPending = 0;
+      if (ret != -1) {
+        ret = send_next_in_packet();
       }
     }
     break;
@@ -312,6 +361,10 @@ static int process_packet(int user, s_packet * packet)
       fprintf(stderr, "unhandled packet (type=0x%02x)\n", type);
     }
     break;
+  }
+
+  if(ret < 0) {
+    set_done();
   }
 
   return ret;
@@ -373,13 +426,12 @@ int proxy_init() {
     return -1;
   }
 
+  fix_device();
   fix_endpoints();
 
   if (send_descriptors() < 0) {
     return -1;
   }
-
-  state = E_STATE_DESCRIPTORS;
 
   int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, GE_AddSource);
   if (ret < 0) {

@@ -18,12 +18,12 @@
  */
 static uint8_t control[MAX_CONTROL_TRANSFER_SIZE];
 
-static s_epData input;
+static s_endpointPacket input;
 static uint8_t inputDataLen;
 
 static uint8_t descriptors[MAX_DESCRIPTORS_SIZE];
-static s_descIndex descIndex[MAX_DESCRIPTORS];
-static s_endpoint endpoints[MAX_ENDPOINTS];
+static s_descriptorIndex descIndex[MAX_DESCRIPTORS];
+static s_endpointConfig endpoints[MAX_ENDPOINTS];
 
 /*
  * Only used in the serial interrupt.
@@ -237,10 +237,10 @@ void ReceiveNextOutput(void) {
                 uint8_t type;
                 uint8_t length;
             } header;
-            s_epData value;
+            s_endpointPacket value;
         } packet = { .header.type = E_TYPE_OUT };
 
-        s_endpoint * endpoint = endpoints + outEndpoints[selectedOutEndpoint++];
+        s_endpointConfig * endpoint = endpoints + outEndpoints[selectedOutEndpoint++];
         if (selectedOutEndpoint == outEndpointNumber) {
             selectedOutEndpoint = 0;
         }

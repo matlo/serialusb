@@ -28,6 +28,7 @@ static uint8_t inPending = 0;
 static struct {
   unsigned short length;
   s_endpointPacket packet;
+  uint8_t sourceEndpoint;
 } inEnpointPackets[MAX_ENDPOINTS] = {};
 static uint8_t nbEpInData = 0;
 
@@ -50,14 +51,14 @@ static int send_next_in_packet() {
     if(ret < 0) {
       return -1;
     }
-    inPending = inEnpointPackets->packet.endpoint;
+    inPending = inEnpointPackets->sourceEndpoint;
     memmove(inEnpointPackets, inEnpointPackets + 1, (--nbEpInData) * sizeof(*inEnpointPackets));
   }
 
   return 0;
 }
 
-static int queue_in_packet(unsigned char endpointAddress, const void * buf, int transfered) {
+static int queue_in_packet(unsigned char endpoint, const void * buf, int transfered) {
 
 
   if (nbEpInData == sizeof(inEnpointPackets) / sizeof(*inEnpointPackets)) {
@@ -65,9 +66,10 @@ static int queue_in_packet(unsigned char endpointAddress, const void * buf, int 
     return -1;
   }
 
-  inEnpointPackets[nbEpInData].packet.endpoint = endpoints[endpointMap[endpointAddress - 1]].number;
+  inEnpointPackets[nbEpInData].packet.endpoint = endpoints[endpointMap[(endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1]].number;
   memcpy(inEnpointPackets[nbEpInData].packet.data, buf, transfered);
   inEnpointPackets[nbEpInData].length = transfered + 1;
+  inEnpointPackets[nbEpInData].sourceEndpoint = endpoint;
   ++nbEpInData;
 
   return 0;
@@ -94,7 +96,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int tr
       return -1;
     }
 
-    int ret = queue_in_packet(endpointAddress, buf, transfered);
+    int ret = queue_in_packet(endpoint, buf, transfered);
     if (ret < 0) {
       set_done();
       return -1;
@@ -228,12 +230,16 @@ void fix_endpoints() {
           if (configurationIndex > 0) {
             continue;
           }
-          if (endpointNumber > MAX_ENDPOINTS) {
-            printf("endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
+          if ((endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) != LIBUSB_TRANSFER_TYPE_INTERRUPT) {
+            printf("endpoint %hu won't be configured (not an INTERRUPT endpoint)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK);
             continue;
           }
           if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
             printf("endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
+            continue;
+          }
+          if (endpointNumber > MAX_ENDPOINTS) {
+            printf("endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
             continue;
           }
           if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) {
@@ -309,6 +315,13 @@ static int poll_all_endpoints() {
   return ret;
 }
 
+static int send_out_packet(s_packet * packet) {
+
+  s_endpointPacket * epPacket = (s_endpointPacket *)packet->value;
+
+  return usbasync_write(usb, epPacket->endpoint, epPacket->data, packet->header.length - 1);
+}
+
 static int process_packet(int user, s_packet * packet)
 {
   unsigned char type = packet->header.type;
@@ -336,10 +349,10 @@ static int process_packet(int user, s_packet * packet)
       }
     }
     break;
-  /*case E_TYPE_CONTROL:
-    //TODO MLA
-    break;
   case E_TYPE_OUT:
+    ret = send_out_packet(packet);
+    break;
+  /*case E_TYPE_CONTROL:
     //TODO MLA
     break;
   case E_TYPE_DEBUG:

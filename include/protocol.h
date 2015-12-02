@@ -19,7 +19,8 @@
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255
 
-#define MAX_ENDPOINTS 6 // excluding the control endpoint
+//#define MAX_ENDPOINTS 6 // excluding the control endpoint
+#define MAX_ENDPOINTS 5
 
 #define MAX_PACKET_SIZE_EP0 64
 

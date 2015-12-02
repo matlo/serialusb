@@ -126,18 +126,6 @@ int usb_close_callback(int user) {
   return 1;
 }
 
-static void dump(const unsigned char * packet, unsigned char length) {
-
-  int i;
-  for (i = 0; i < length; ++i) {
-    if (i && !(i % 8)) {
-      printf("\n");
-    }
-    printf("0x%02x ", packet[i]);
-  }
-  printf("\n");
-}
-
 int adapter_send_callback(int user, int transfered) {
 
   if (transfered < 0) {
@@ -325,8 +313,6 @@ static int send_out_packet(s_packet * packet) {
 static int process_packet(int user, s_packet * packet)
 {
   unsigned char type = packet->header.type;
-  unsigned char length = packet->header.length;
-  unsigned char * data = packet->value;
 
   int ret = 0;
 

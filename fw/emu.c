@@ -146,6 +146,8 @@ void SetupHardware(void) {
 
     while(!started) {}
 
+    TCCR1B |= (1 << CS12); // Set up timer at FCPU /256
+
     USB_Init();
 }
 
@@ -187,7 +189,6 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue, const uint16_t wIndex
 
 void EVENT_USB_Device_ControlRequest(void) {
 
-    //TODO MLA: handle interface requests here
 }
 
 void EVENT_USB_Device_UnhandledControlRequest(void) {
@@ -195,10 +196,13 @@ void EVENT_USB_Device_UnhandledControlRequest(void) {
     if(USB_ControlRequest.bmRequestType | REQDIR_DEVICETOHOST) {
         controlReply = 0;
         send_control_header();
-        while(!controlReply);
-        Endpoint_ClearSETUP();
-        Endpoint_Write_Control_Stream_LE(control, controlReplyLen);
-        Endpoint_ClearOUT();
+        TCNT1 = 0;
+        while (!controlReply && TCNT1 < 31250) {} // wait up to 500 ms
+        if (controlReply && (controlReplyLen == USB_ControlRequest.wLength)) {
+          Endpoint_ClearSETUP();
+          Endpoint_Write_Control_Stream_LE(control, controlReplyLen);
+          Endpoint_ClearOUT();
+        }
     } else {
         static uint8_t buffer[MAX_CONTROL_TRANSFER_SIZE];
         Endpoint_ClearSETUP();

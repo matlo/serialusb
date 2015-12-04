@@ -3,10 +3,10 @@
  License: GPLv3
  */
 
-#ifndef SERIALPROXY_H_
-#define SERIALPROXY_H_
+#ifndef PROXY_H_
+#define PROXY_H_
 
-int proxy_init();
+int proxy_init(char * port);
 int proxy_stop();
 
-#endif /* SERIALPROXY_H_ */
+#endif /* PROXY_H_ */

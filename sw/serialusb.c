@@ -3,7 +3,6 @@
  License: GPLv3
  */
 
-#include <GE.h>
 #include <stdio.h>
 #include <signal.h>
 #include <errno.h>
@@ -12,16 +11,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <usbasync.h>
-#include <serialasync.h>
-#include <protocol.h>
-#include <serialproxy.h>
-
-#ifdef WIN32
-#define REGISTER_FUNCTION GE_AddSourceHandle
-#else
-#define REGISTER_FUNCTION GE_AddSource
-#endif
+#include <proxy.h>
+#include <GE.h>
 
 volatile int done = 0;
 
@@ -51,7 +42,9 @@ BOOL WINAPI ConsoleHandler(DWORD dwType) {
 }
 #endif
 
-int main(int argc, char* argv[]) {
+int main(int argc, char * argv[]) {
+
+  char * port = NULL;
 
   if (!GE_initialize()) {
     fprintf(stderr, "GE_initialize failed\n");
@@ -61,8 +54,12 @@ int main(int argc, char* argv[]) {
   (void) signal(SIGINT, terminate);
   (void) signal(SIGTERM, terminate);
 
-  int ret = proxy_init();
-  if(ret == 0) {
+  if (argc > 1) {
+    port = argv[1];
+  }
+
+  int ret = proxy_init(port);
+  if (port != NULL && ret == 0) {
 
     GE_TimerStart(10000);
 

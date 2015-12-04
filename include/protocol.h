@@ -15,6 +15,8 @@
 #define PACKED __attribute__((packed))
 #endif
 
+#define BCD_USB_1_1 0x0110 // USB 1.1, also called full speed
+
 #define MAX_DESCRIPTORS_SIZE 1024
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255
@@ -58,7 +60,7 @@ typedef enum {
 #define BYTE_LEN_0_BYTE   0x00
 #define BYTE_LEN_1_BYTE   0x01
 
-#define BUFFER_SIZE (UCHAR_MAX+1)
+#define MAX_PACKET_SIZE (UCHAR_MAX+1)
 
 typedef struct PACKED {
   unsigned char type;
@@ -68,7 +70,7 @@ typedef struct PACKED {
 typedef struct PACKED
 {
   s_header header;
-  unsigned char value[BUFFER_SIZE - sizeof(s_header)];
+  unsigned char value[MAX_PACKET_SIZE - sizeof(s_header)];
 } s_packet;
 
 #endif

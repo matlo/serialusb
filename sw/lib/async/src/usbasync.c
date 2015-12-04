@@ -340,10 +340,20 @@ static void usb_callback(struct libusb_transfer* transfer) {
     break;
   }
   if (transfer->status != LIBUSB_TRANSFER_CANCELLED) {
-    if (IS_ENDPOINT_OUT(transfer->endpoint)) {
-      usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
+    if (transfer->type == LIBUSB_TRANSFER_TYPE_CONTROL) {
+      struct libusb_control_setup * setup = libusb_control_transfer_get_setup(transfer);
+      if(setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
+        unsigned char * data = libusb_control_transfer_get_data(transfer);
+        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, data, transfered);
+      } else {
+        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
+      }
     } else {
-      usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer, transfered);
+      if (IS_ENDPOINT_OUT(transfer->endpoint)) {
+        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
+      } else {
+        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer, transfered);
+      }
     }
   }
 
@@ -1216,10 +1226,20 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
-  unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, 0)
-  if(endpointIndex == INVALID_ENDPOINT_INDEX) {
-  
-    return -1;
+  if (endpoint != 0) {
+
+    unsigned char endpointIndex = GET_ENDPOINT(device, endpoint, LIBUSB_ENDPOINT_OUT, 0)
+    if(endpointIndex == INVALID_ENDPOINT_INDEX) {
+
+      return -1;
+    }
+  } else {
+
+    struct libusb_control_setup * control_setup = (struct libusb_control_setup *)buf;
+    if(control_setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
+
+      count += control_setup->wLength;
+    }
   }
 
   if (usbdevices[device].callback.fp_write == NULL) {
@@ -1245,41 +1265,15 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
     return -1;
   }
 
-  libusb_fill_interrupt_transfer(transfer, usbdevices[device].devh, endpoint,
-      buffer, count, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_OUT_TIMEOUT);
+  if (endpoint == 0) {
+
+    libusb_fill_control_transfer(transfer, usbdevices[device].devh,
+        buffer, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_OUT_TIMEOUT);
+  } else {
+
+    libusb_fill_interrupt_transfer(transfer, usbdevices[device].devh, endpoint,
+        buffer, count, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_OUT_TIMEOUT);
+  }
 
   return submit_transfer(transfer);
-}
-
-int usbasync_print_endpoints (int device) {
-
-  USBASYNC_CHECK_DEVICE(device, -1)
-
-  unsigned char configurationIndex;
-  for (configurationIndex = 0; configurationIndex < usbdevices[device].descriptors.device.bNumConfigurations; ++configurationIndex) {
-    struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
-    printf("configuration: %hhu\n", pConfiguration->descriptor->bConfigurationValue);
-    unsigned char interfaceIndex;
-    for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
-      struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
-      unsigned char altInterfaceIndex;
-      for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
-        struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
-        printf("  interface: %hhu:%hhu\n", pAltInterface->descriptor->bInterfaceNumber, pAltInterface->descriptor->bAlternateSetting);
-        unsigned char endpointIndex;
-        for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
-          printf("    endpoint:");
-          printf(" %d", pAltInterface->endpoints[endpointIndex]->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK);
-          printf(" %s", IS_ENDPOINT_IN(pAltInterface->endpoints[endpointIndex]->bEndpointAddress) ? "IN" : "OUT");
-          printf(" %s",
-              IS_ENDPOINT_INTERRUPT(pAltInterface->endpoints[endpointIndex]->bmAttributes) ? "INTERRUPT" :
-              IS_ENDPOINT_BULK(pAltInterface->endpoints[endpointIndex]->bmAttributes) ? "BULK" :
-              IS_ENDPOINT_ISOCHRONOUS(pAltInterface->endpoints[endpointIndex]->bmAttributes) ?
-                  "ISOCHRONOUS" : "UNKNOWN");
-          printf("\n");
-        }
-      }
-    }
-  }
-  return 0;
 }

@@ -247,7 +247,7 @@
 			 *        by the application to determine how to handle the issued request.
 			 */
 			void EVENT_USB_Device_ControlRequest(void);
-            void EVENT_USB_Device_UnhandledControlRequest(void);
+			void EVENT_USB_Device_UnhandledControlRequest(void);
 
 			/** Event for USB configuration number changed. This event fires when a the USB host changes the
 			 *  selected configuration number while in device mode. This event should be hooked in device

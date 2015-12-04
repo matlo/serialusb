@@ -117,7 +117,7 @@ void USB_Device_ProcessControlRequest(void)
 
 	if (Endpoint_IsSETUPReceived())
 	{
-
+		EVENT_USB_Device_UnhandledControlRequest();
 	}
 
 	if (Endpoint_IsSETUPReceived())

@@ -70,9 +70,9 @@
 //		#define USE_FLASH_DESCRIPTORS
 //		#define USE_EEPROM_DESCRIPTORS
 //		#define NO_INTERNAL_SERIAL
-		#define FIXED_CONTROL_ENDPOINT_SIZE      64
+//		#define FIXED_CONTROL_ENDPOINT_SIZE      64
 //		#define DEVICE_STATE_AS_GPIOR            {Insert Value Here}
-		#define FIXED_NUM_CONFIGURATIONS         1
+//		#define FIXED_NUM_CONFIGURATIONS         1
 //		#define CONTROL_ONLY_DEVICE
 //		#define INTERRUPT_CONTROL_ENDPOINT
 //		#define NO_DEVICE_REMOTE_WAKEUP

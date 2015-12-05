@@ -261,7 +261,54 @@ static int submit_transfer(struct libusb_transfer * transfer) {
   return ret;
 }
 
-static void usb_callback(struct libusb_transfer* transfer);
+static void usb_callback(struct libusb_transfer* transfer) {
+
+  int device = (unsigned long) transfer->user_data;
+
+  //make sure the device still exists, in case something went wrong
+  if(usbasync_check_device(device, __FILE__, __LINE__, __func__) < 0) {
+    remove_transfer(transfer);
+    return;
+  }
+
+  int status;
+  switch (transfer->status) {
+  case LIBUSB_TRANSFER_COMPLETED:
+    status = transfer->actual_length;
+    break;
+  case LIBUSB_TRANSFER_TIMED_OUT:
+    status = E_TRANSFER_TIMED_OUT;
+    break;
+  case LIBUSB_TRANSFER_STALL:
+    status = E_TRANSFER_STALL;
+    break;
+  case LIBUSB_TRANSFER_CANCELLED:
+    break;
+  default:
+    status = E_TRANSFER_ERROR;
+    PRINT_TRANSFER_ERROR(transfer)
+    break;
+  }
+  if (transfer->status != LIBUSB_TRANSFER_CANCELLED) {
+    if (transfer->type == LIBUSB_TRANSFER_TYPE_CONTROL) {
+      struct libusb_control_setup * setup = libusb_control_transfer_get_setup(transfer);
+      if(setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
+        unsigned char * data = libusb_control_transfer_get_data(transfer);
+        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, data, status);
+      } else {
+        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, status);
+      }
+    } else {
+      if (IS_ENDPOINT_OUT(transfer->endpoint)) {
+        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, status);
+      } else {
+        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer, status);
+      }
+    }
+  }
+
+  remove_transfer(transfer);
+}
 
 int usbasync_poll(int device, unsigned char endpoint) {
 
@@ -309,55 +356,6 @@ int usbasync_poll(int device, unsigned char endpoint) {
   }
 
   return submit_transfer(transfer);
-}
-
-static void usb_callback(struct libusb_transfer* transfer) {
-
-  int device = (unsigned long) transfer->user_data;
-
-  //make sure the device still exists, in case something went wrong
-  if(usbasync_check_device(device, __FILE__, __LINE__, __func__) < 0) {
-    remove_transfer(transfer);
-    return;
-  }
-
-  int transfered;
-  switch (transfer->status) {
-  case LIBUSB_TRANSFER_COMPLETED:
-    transfered = transfer->actual_length;
-    break;
-  case LIBUSB_TRANSFER_TIMED_OUT:
-    transfered = 0;
-    if (IS_ENDPOINT_OUT(transfer->endpoint)) {
-      PRINT_TRANSFER_ERROR(transfer)
-    }
-    break;
-  case LIBUSB_TRANSFER_CANCELLED:
-    break;
-  default:
-    transfered = -1;
-    PRINT_TRANSFER_ERROR(transfer)
-    break;
-  }
-  if (transfer->status != LIBUSB_TRANSFER_CANCELLED) {
-    if (transfer->type == LIBUSB_TRANSFER_TYPE_CONTROL) {
-      struct libusb_control_setup * setup = libusb_control_transfer_get_setup(transfer);
-      if(setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
-        unsigned char * data = libusb_control_transfer_get_data(transfer);
-        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, data, transfered);
-      } else {
-        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
-      }
-    } else {
-      if (IS_ENDPOINT_OUT(transfer->endpoint)) {
-        usbdevices[device].callback.fp_write(usbdevices[device].callback.user, transfer->endpoint, transfered);
-      } else {
-        usbdevices[device].callback.fp_read(usbdevices[device].callback.user, transfer->endpoint, transfer->buffer, transfered);
-      }
-    }
-  }
-
-  remove_transfer(transfer);
 }
 
 static int handle_events(int unused) {

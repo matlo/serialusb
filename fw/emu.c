@@ -44,6 +44,7 @@ static uint8_t outEndpointNumber = 0;
  */
 static volatile uint8_t started = 0;
 static volatile uint8_t controlReply = 0;
+static volatile uint8_t controlStall = 0;
 static volatile uint8_t controlReplyLen = 0;
 
 static inline void forceHardReset(void) {
@@ -63,7 +64,7 @@ static inline void send_control_header(void) {
 
     uint8_t len = sizeof(USB_ControlRequest);
     if( !(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) ) {
-        len += (USB_ControlRequest.wLength & 0xFF); //TODO MLA: send multiple packets
+        len += USB_ControlRequest.wLength;
     }
     Serial_SendByte(E_TYPE_CONTROL);
     Serial_SendByte(len);
@@ -91,7 +92,7 @@ ISR(USART1_RX_vect) {
 
     uint8_t packet_type = UDR1;
     uint8_t value_len = Serial_BlockingReceiveByte();
-    static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_in };
+    static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_control_stall, &&l_in };
     if(packet_type > E_TYPE_IN) {
         return;
     }
@@ -116,6 +117,11 @@ ISR(USART1_RX_vect) {
     controlReplyLen = value_len;
     READ_VALUE(control)
     controlReply = 1;
+    return;
+    l_control_stall:
+    READ_VALUE(control)
+    controlReply = 1;
+    controlStall = 1;
     return;
     l_in:
     inputDataLen = value_len - 1;
@@ -193,23 +199,49 @@ void EVENT_USB_Device_ControlRequest(void) {
 
 void EVENT_USB_Device_UnhandledControlRequest(void) {
 
-    if(USB_ControlRequest.bmRequestType | REQDIR_DEVICETOHOST) {
-        controlReply = 0;
+    if (USB_ControlRequest.wLength > MAX_CONTROL_TRANSFER_SIZE) {
+        Serial_SendByte(E_TYPE_DEBUG);
+        Serial_SendByte(BYTE_LEN_0_BYTE);
+        return;
+    }
+
+    controlReply = 0;
+    controlStall = 0;
+
+    if (USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) {
         send_control_header();
-        TCNT1 = 0;
-        while (!controlReply && TCNT1 < 31250) {} // wait up to 500 ms
-        if (controlReply && (controlReplyLen == USB_ControlRequest.wLength)) {
-          Endpoint_ClearSETUP();
-          Endpoint_Write_Control_Stream_LE(control, controlReplyLen);
-          Endpoint_ClearOUT();
-        }
     } else {
         static uint8_t buffer[MAX_CONTROL_TRANSFER_SIZE];
         Endpoint_ClearSETUP();
-        Endpoint_Read_Control_Stream_LE(buffer, USB_ControlRequest.wLength);
-        Endpoint_ClearIN();
+        uint8_t ErrorCode =  Endpoint_Read_Control_Stream_LE(buffer, USB_ControlRequest.wLength);
+        if (ErrorCode != ENDPOINT_RWSTREAM_NoError) {
+            Endpoint_StallTransaction();
+            return;
+        }
         send_control_header();
         Serial_SendData(buffer, USB_ControlRequest.wLength);
+    }
+
+    TCNT1 = 0;
+    while (!controlReply && TCNT1 < 31250) {} // wait up to 500 ms
+
+    if (!controlReply) {
+      Serial_SendByte(E_TYPE_DEBUG);
+      Serial_SendByte(BYTE_LEN_0_BYTE);
+    }
+
+    if (!controlReply || controlStall) {
+        Endpoint_ClearSETUP();
+        Endpoint_StallTransaction();
+        return;
+    }
+
+    if(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) {
+        Endpoint_ClearSETUP();
+        Endpoint_Write_Control_Stream_LE(control, controlReplyLen);
+        Endpoint_ClearOUT();
+    } else {
+        Endpoint_ClearIN();
     }
 }
 

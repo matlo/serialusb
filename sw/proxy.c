@@ -12,7 +12,13 @@
 #include <string.h>
 #include <GE.h>
 
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
+#define PRINT_TRANSFER_WRITE_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK, msg);
+#define PRINT_TRANSFER_READ_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK, msg);
 
 static int usb = -1;
 static int adapter = -1;
@@ -87,58 +93,98 @@ static int queue_in_packet(unsigned char endpoint, const void * buf, int transfe
   return 0;
 }
 
-int usb_read_callback(int user, unsigned char endpoint, const void * buf, int transfered) {
+int usb_read_callback(int user, unsigned char endpoint, const void * buf, int status) {
 
-  /*
-   * TODO MLA: For control transfers, send the status of the request.
-   */
-  if (transfered < 0) {
-    set_done();
+  switch (status) {
+  case E_TRANSFER_TIMED_OUT:
+    PRINT_TRANSFER_READ_ERROR(endpoint, "TIMEOUT")
+    break;
+  case E_TRANSFER_STALL:
+    break;
+  case E_TRANSFER_ERROR:
+    PRINT_TRANSFER_WRITE_ERROR(endpoint, "OTHER ERROR")
     return -1;
+  default:
+    break;
   }
 
   uint8_t endpointAddress = endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK;
 
   if (endpointAddress == 0) {
 
-    if (transfered > MAX_PACKET_SIZE) {
+    if (status > MAX_PACKET_SIZE) {
       PRINT_ERROR_OTHER("too many bytes transfered")
       set_done();
       return -1;
     }
 
-    int ret = adapter_send(adapter, E_TYPE_CONTROL, buf, transfered);
+    int ret;
+    if (status > 0) {
+      ret = adapter_send(adapter, E_TYPE_CONTROL, buf, status);
+    } else {
+      ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+    }
     if(ret < 0) {
       return -1;
     }
   } else {
 
-    if (transfered > MAX_PAYLOAD_SIZE_EP) {
+    if (status > MAX_PAYLOAD_SIZE_EP) {
       PRINT_ERROR_OTHER("too many bytes transfered")
       set_done();
       return -1;
     }
 
-    int ret = queue_in_packet(endpoint, buf, transfered);
-    if (ret < 0) {
-      set_done();
-      return -1;
-    }
+    if (status > 0) {
 
-    ret = send_next_in_packet();
-    if (ret < 0) {
-      set_done();
-      return -1;
+      int ret = queue_in_packet(endpoint, buf, status);
+      if (ret < 0) {
+        set_done();
+        return -1;
+      }
+
+      ret = send_next_in_packet();
+      if (ret < 0) {
+        set_done();
+        return -1;
+      }
     }
   }
 
   return 0;
 }
 
-int usb_write_callback(int user, unsigned char endpoint, int transfered) {
+int usb_write_callback(int user, unsigned char endpoint, int status) {
 
-  TRACE
-  //TODO MLA
+  switch (status) {
+  case E_TRANSFER_TIMED_OUT:
+    PRINT_TRANSFER_WRITE_ERROR(endpoint, "TIMEOUT")
+    if (endpoint == 0) {
+      return -1;
+    }
+    break;
+  case E_TRANSFER_STALL:
+    if (endpoint == 0) {
+      int ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+      if (ret < 0) {
+        set_done();
+        return -1;
+      }
+    }
+    break;
+  case E_TRANSFER_ERROR:
+    PRINT_TRANSFER_WRITE_ERROR(endpoint, "OTHER ERROR")
+    return -1;
+  default:
+    if (endpoint == 0) {
+      int ret = adapter_send(adapter, E_TYPE_CONTROL, NULL, 0);
+      if (ret < 0) {
+        set_done();
+        return -1;
+      }
+    }
+    break;
+  }
 
   return 0;
 }
@@ -251,9 +297,7 @@ void fix_endpoints() {
                   "ISOCHRONOUS" : "UNKNOWN");
           printf(" %hu", originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK);
           if (originalEndpoint != endpoint->bEndpointAddress) {
-            printf(" -> %hu", endpointNumber);
-          } else {
-            printf(" -> unchanged");
+            printf(KRED" -> %hu"KNRM, endpointNumber);
           }
           printf("\n");
           if ((originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) == 0) {
@@ -286,18 +330,6 @@ void fix_endpoints() {
         }
       }
     }
-  }
-}
-
-void fix_device() {
-
-  if (descriptors->device.bcdUSB != BCD_USB_1_1) {
-    printf("bcdUSB: 0x%04x -> 0x%04x\n", descriptors->device.bcdUSB, BCD_USB_1_1);
-    descriptors->device.bcdUSB = BCD_USB_1_1;
-  }
-  if (descriptors->device.bMaxPacketSize0 != MAX_PACKET_SIZE_EP0) {
-    printf("bMaxPacketSize0: %hhu -> %hhu\n", descriptors->device.bMaxPacketSize0, MAX_PACKET_SIZE_EP0);
-    descriptors->device.bMaxPacketSize0 = MAX_PACKET_SIZE_EP0;
   }
 }
 
@@ -375,6 +407,18 @@ static int send_control_packet(s_packet * packet) {
   return usbasync_write(usb, 0, packet->value, packet->header.length);
 }
 
+static void dump(unsigned char * data, unsigned char length)
+{
+  int i;
+  for (i = 0; i < length; ++i) {
+    if(i && !(i % 8)) {
+      printf("\n");
+    }
+    printf("0x%02x ", data[i]);
+  }
+  printf("\n");
+}
+
 static int process_packet(int user, s_packet * packet)
 {
   unsigned char type = packet->header.type;
@@ -406,17 +450,17 @@ static int process_packet(int user, s_packet * packet)
   case E_TYPE_CONTROL:
     ret = send_control_packet(packet);
     break;
-/*  case E_TYPE_DEBUG:
+  case E_TYPE_DEBUG:
     {
       struct timeval tv;
       gettimeofday(&tv, NULL);
-      printf("%ld.%06ld debug packet received (size = %d bytes)\n", tv.tv_sec, tv.tv_usec, length);
-      dump(data, length);
+      printf("%ld.%06ld debug packet received (size = %d bytes)\n", tv.tv_sec, tv.tv_usec, packet->header.length);
+      dump(packet->value, packet->header.length);
     }
     break;
   case E_TYPE_RESET:
-    //TODO MLA
-    break;*/
+    ret = -1;
+    break;
   default:
     {
       struct timeval tv;
@@ -480,7 +524,6 @@ int proxy_init(char * port) {
     return -1;
   }
 
-  fix_device();
   fix_endpoints();
 
   if (port != NULL) {

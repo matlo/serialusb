@@ -15,8 +15,6 @@
 #define PACKED __attribute__((packed))
 #endif
 
-#define BCD_USB_1_1 0x0110 // USB 1.1, also called full speed
-
 #define MAX_DESCRIPTORS_SIZE 1024
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255
@@ -52,6 +50,7 @@ typedef enum {
   E_TYPE_ENDPOINTS,
   E_TYPE_RESET,
   E_TYPE_CONTROL,
+  E_TYPE_CONTROL_STALL,
   E_TYPE_IN,
   E_TYPE_OUT,
   E_TYPE_DEBUG,

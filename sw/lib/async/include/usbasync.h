@@ -27,8 +27,14 @@ struct usb_hid_descriptor {
   } rdesc[0];
 } PACKED;
 
-typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, int transfered);
-typedef int (* USBASYNC_WRITE_CALLBACK)(int user, unsigned char endpoint, int transfered);
+typedef enum {
+  E_TRANSFER_TIMED_OUT = -1,
+  E_TRANSFER_STALL = -2,
+  E_TRANSFER_ERROR = -3,
+} e_transfer_status;
+
+typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, int status);
+typedef int (* USBASYNC_WRITE_CALLBACK)(int user, unsigned char endpoint, int status);
 typedef int (* USBASYNC_CLOSE_CALLBACK)(int user);
 #ifndef WIN32
 typedef void (* USBASYNC_REGISTER_SOURCE)(int fd, int id, int (*fp_read)(int), int (*fp_write)(int), int (*fp_cleanup)(int));

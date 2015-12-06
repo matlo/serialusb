@@ -211,19 +211,6 @@ int adapter_close_callback(int user) {
   return 1;
 }
 
-#define ADD_DESCRIPTOR(WVALUE,WINDEX,WLENGTH,DATA) \
-  if (pDesc + WLENGTH <= desc + MAX_DESCRIPTORS_SIZE && pDescIndex < descIndex + MAX_DESCRIPTORS) { \
-    pDescIndex->offset = pDesc - desc; \
-    pDescIndex->wValue = WVALUE; \
-    pDescIndex->wIndex = WINDEX; \
-    pDescIndex->wLength = WLENGTH; \
-    memcpy(pDesc, DATA, WLENGTH); \
-    pDesc += WLENGTH; \
-    ++pDescIndex; \
-  } else { \
-    warn = 1; \
-  }
-
 static char * usb_select() {
 
   char * path = NULL;
@@ -336,6 +323,19 @@ void fix_endpoints() {
 int send_descriptors() {
 
   unsigned char warn = 0;
+
+#define ADD_DESCRIPTOR(WVALUE,WINDEX,WLENGTH,DATA) \
+  if (pDesc + WLENGTH <= desc + MAX_DESCRIPTORS_SIZE && pDescIndex < descIndex + MAX_DESCRIPTORS) { \
+    pDescIndex->offset = pDesc - desc; \
+    pDescIndex->wValue = WVALUE; \
+    pDescIndex->wIndex = WINDEX; \
+    pDescIndex->wLength = WLENGTH; \
+    memcpy(pDesc, DATA, WLENGTH); \
+    pDesc += WLENGTH; \
+    ++pDescIndex; \
+  } else { \
+    warn = 1; \
+  }
 
   ADD_DESCRIPTOR((LIBUSB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
   ADD_DESCRIPTOR((LIBUSB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)

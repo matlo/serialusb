@@ -3,7 +3,7 @@
 serialusb is a cheap (~5$) USB proxy intended to be used with input devices.
 
 Input devices generally use interrupt IN and OUT endpoints, and operate at low or full speed modes.  
-The maximum baudrate is 64 kB/s = 512kbps in each direction (1000Hz, 64-byte packets).  
+The maximum throughput is 64 kB/s = 512kbps in each direction (1000Hz, 64-byte packets).  
 A USB proxy requires a system with both device and host interfaces.  
 Many ARM boards fulfill this requirement, but those aren't as cheap (yet).  
 
@@ -55,8 +55,7 @@ These goals led to the following decisions:
 # Limitations
 
 * Only control and interrupt endpoints are currently supported.
-* This is a software proxy, not a hardware one.  
-It's usefull for reverse-engineering protocols, not for investigating hardware issues.
+* This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
 * Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb does a few changes to the USB descriptors used at the enumeration step.
 * For now the UART speed is 500kbps, which is not enough to reach the theorical max baudrate of 64kB/s.
 

@@ -409,6 +409,10 @@ static int send_out_packet(s_packet * packet) {
 
 static int send_control_packet(s_packet * packet) {
 
+  /*
+   * TODO MLA: endpoint mapping for standard endpoint requests
+   */
+
   return usbasync_write(usb, 0, packet->value, packet->header.length);
 }
 

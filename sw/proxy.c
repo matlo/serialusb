@@ -34,20 +34,22 @@ static s_endpointConfig * pEndpoints = endpoints;
 static uint8_t descIndexSent = 0;
 static uint8_t endpointsSent = 0;
 
-static uint8_t inEndpoints[MAX_ENDPOINTS] = {};
-static uint8_t inEndpointNumber = 0;
-static uint8_t endpointMap[LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
 static uint8_t inPending = 0;
 
-/*
- * TODO MLA: Have a slot per endpoint instead of a queue.
- */
+static uint8_t serialToUsbEndpoint[2][LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+static uint8_t usbToSerialEndpoint[2][LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+
+#define ENDPOINT_TO_INDEX(ENDPOINT) (((ENDPOINT) & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1)
+#define S2U_ENDPOINT(ENDPOINT) serialToUsbEndpoint[(ENDPOINT) >> 7][ENDPOINT_TO_INDEX(ENDPOINT)]
+#define U2S_ENDPOINT(ENDPOINT) usbToSerialEndpoint[(ENDPOINT) >> 7][ENDPOINT_TO_INDEX(ENDPOINT)]
+
 static struct {
-  unsigned short length;
+  uint16_t length;
   s_endpointPacket packet;
-  uint8_t sourceEndpoint;
-} inEnpointPackets[MAX_ENDPOINTS] = {};
-static uint8_t nbEpInData = 0;
+} inPackets[LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+
+static uint8_t inEpFifo[MAX_ENDPOINTS] = {};
+static uint8_t nbInEpFifo = 0;
 
 #define TRACE printf("%s\n", __func__);
 
@@ -63,13 +65,15 @@ static int send_next_in_packet() {
     return 0;
   }
 
-  if (nbEpInData > 0) {
-    int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&inEnpointPackets->packet, inEnpointPackets->length);
+  if (nbInEpFifo > 0) {
+    uint8_t inPacketIndex = ENDPOINT_TO_INDEX(inEpFifo[0]);
+    int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&inPackets[inPacketIndex].packet, inPackets[inPacketIndex].length);
     if(ret < 0) {
       return -1;
     }
-    inPending = inEnpointPackets->sourceEndpoint;
-    memmove(inEnpointPackets, inEnpointPackets + 1, (--nbEpInData) * sizeof(*inEnpointPackets));
+    inPending = inEpFifo[0];
+    --nbInEpFifo;
+    memmove(inEpFifo, inEpFifo + 1, nbInEpFifo * sizeof(*inEpFifo));
   }
 
   return 0;
@@ -77,18 +81,21 @@ static int send_next_in_packet() {
 
 static int queue_in_packet(unsigned char endpoint, const void * buf, int transfered) {
 
-  if (nbEpInData == sizeof(inEnpointPackets) / sizeof(*inEnpointPackets)) {
-    PRINT_ERROR_OTHER("no slot available")
+  if (nbInEpFifo == sizeof(inEpFifo) / sizeof(*inEpFifo)) {
+    PRINT_ERROR_OTHER("no more space in inEpFifo")
     return -1;
   }
 
-  inEnpointPackets[nbEpInData].packet.endpoint = endpoints[endpointMap[(endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1]].number;
-  memcpy(inEnpointPackets[nbEpInData].packet.data, buf, transfered);
-  inEnpointPackets[nbEpInData].length = transfered + 1;
-  inEnpointPackets[nbEpInData].sourceEndpoint = endpoint;
-  ++nbEpInData;
+  uint8_t inPacketIndex = ENDPOINT_TO_INDEX(endpoint);
+  inPackets[inPacketIndex].packet.endpoint = U2S_ENDPOINT(endpoint);
+  memcpy(inPackets[inPacketIndex].packet.data, buf, transfered);
+  inPackets[inPacketIndex].length = transfered + 1;
+  inEpFifo[nbInEpFifo] = endpoint;
+  ++nbInEpFifo;
 
-  //TODO MLA: Poll the endpoint after registering the packet.
+  /*
+   * TODO MLA: Poll the endpoint after registering the packet?
+   */
 
   return 0;
 }
@@ -108,9 +115,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
     break;
   }
 
-  uint8_t endpointAddress = endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK;
-
-  if (endpointAddress == 0) {
+  if (endpoint == 0) {
 
     if (status > MAX_PACKET_SIZE) {
       PRINT_ERROR_OTHER("too many bytes transfered")
@@ -306,10 +311,8 @@ void fix_endpoints() {
             printf("      endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
             continue;
           }
-          if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) {
-            inEndpoints[inEndpointNumber++] = originalEndpoint;
-            endpointMap[(originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1] = endpointNumber - 1;
-          }
+          U2S_ENDPOINT(originalEndpoint) = endpoint->bEndpointAddress;
+          S2U_ENDPOINT(endpoint->bEndpointAddress) = originalEndpoint;
           pEndpoints->number = endpoint->bEndpointAddress;
           pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
           pEndpoints->size = endpoint->wMaxPacketSize;
@@ -389,8 +392,10 @@ static int poll_all_endpoints() {
 
   int ret = 0;
   unsigned char i;
-  for (i = 0; i < inEndpointNumber && ret >= 0; ++i) {
-    ret = usbasync_poll(usb, inEndpoints[i]);
+  for (i = 0; i < sizeof(serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7]) / sizeof(*serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7]) && ret >= 0; ++i) {
+    if (serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7][i]) {
+      ret = usbasync_poll(usb, serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7][i]);
+    }
   }
   return ret;
 }
@@ -399,7 +404,7 @@ static int send_out_packet(s_packet * packet) {
 
   s_endpointPacket * epPacket = (s_endpointPacket *)packet->value;
 
-  return usbasync_write(usb, epPacket->endpoint, epPacket->data, packet->header.length - 1);
+  return usbasync_write(usb, S2U_ENDPOINT(epPacket->endpoint), epPacket->data, packet->header.length - 1);
 }
 
 static int send_control_packet(s_packet * packet) {

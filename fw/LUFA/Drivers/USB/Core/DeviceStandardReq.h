@@ -136,12 +136,12 @@
 			void USB_Device_ProcessControlRequest(void);
 
 			#if defined(__INCLUDE_FROM_DEVICESTDREQ_C)
-				static void USB_Device_SetAddress(void);
-				static void USB_Device_SetConfiguration(void);
-				static void USB_Device_GetConfiguration(void);
-				static void USB_Device_GetDescriptor(void);
-				static void USB_Device_GetStatus(void);
-				static void USB_Device_ClearSetFeature(void);
+				static bool USB_Device_SetAddress(void);
+				static bool USB_Device_SetConfiguration(void);
+				static bool USB_Device_GetConfiguration(void);
+				static bool USB_Device_GetDescriptor(void);
+				static bool USB_Device_GetStatus(void);
+				static bool USB_Device_ClearSetFeature(void);
 
 				#if !defined(NO_INTERNAL_SERIAL) && (USE_INTERNAL_SERIAL != NO_DESCRIPTOR)
 					static void USB_Device_GetInternalSerialDescriptor(void);

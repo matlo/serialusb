@@ -193,16 +193,18 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue, const uint16_t wIndex
     return 0;
 }
 
-void EVENT_USB_Device_ControlRequest(void) {
+bool EVENT_USB_Device_ControlRequest(void) {
 
+    return false;
 }
 
-void EVENT_USB_Device_UnhandledControlRequest(void) {
+bool EVENT_USB_Device_UnhandledControlRequest(void) {
 
     if (USB_ControlRequest.wLength > MAX_CONTROL_TRANSFER_SIZE) {
         Serial_SendByte(E_TYPE_DEBUG);
-        Serial_SendByte(BYTE_LEN_0_BYTE);
-        return;
+        Serial_SendByte(sizeof(USB_ControlRequest));
+        Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
+        return false;
     }
 
     controlReply = 0;
@@ -216,24 +218,25 @@ void EVENT_USB_Device_UnhandledControlRequest(void) {
         uint8_t ErrorCode =  Endpoint_Read_Control_Stream_LE(buffer, USB_ControlRequest.wLength);
         if (ErrorCode != ENDPOINT_RWSTREAM_NoError) {
             Endpoint_StallTransaction();
-            return;
+            return true;
         }
         send_control_header();
         Serial_SendData(buffer, USB_ControlRequest.wLength);
     }
 
     TCNT1 = 0;
-    while (!controlReply && TCNT1 < 31250) {} // wait up to 500 ms
+    while (!controlReply && TCNT1 < 3125) {} // wait up to 50 ms
 
     if (!controlReply) {
-      Serial_SendByte(E_TYPE_DEBUG);
-      Serial_SendByte(BYTE_LEN_0_BYTE);
+      Endpoint_ClearSETUP();
+      Endpoint_ClearStatusStage();
+      return true;
     }
 
-    if (!controlReply || controlStall) {
+    if (controlStall) {
         Endpoint_ClearSETUP();
         Endpoint_StallTransaction();
-        return;
+        return true;
     }
 
     if(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) {
@@ -243,6 +246,8 @@ void EVENT_USB_Device_UnhandledControlRequest(void) {
     } else {
         Endpoint_ClearIN();
     }
+
+    return true;
 }
 
 void SendNextInput(void) {

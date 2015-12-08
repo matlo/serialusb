@@ -888,6 +888,12 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
 #endif
 #endif
 
+  ret = libusb_reset_device(usbdevices[device].devh);
+  if (ret != LIBUSB_SUCCESS) {
+    PRINT_ERROR_LIBUSB("libusb_reset_device", ret)
+    return -1;
+  }
+
   int configuration;
   
   ret = libusb_get_configuration(usbdevices[device].devh, &configuration);
@@ -1266,7 +1272,7 @@ int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigne
   if (endpoint == 0) {
 
     libusb_fill_control_transfer(transfer, usbdevices[device].devh,
-        buffer, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, USBASYNC_OUT_TIMEOUT);
+        buffer, (libusb_transfer_cb_fn) usb_callback, (void *) (unsigned long) device, 50);
   } else {
 
     libusb_fill_interrupt_transfer(transfer, usbdevices[device].devh, endpoint,

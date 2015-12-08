@@ -12,13 +12,15 @@
 #include <string.h>
 #include <GE.h>
 
+#define ENDPOINT_MAX_NUMBER USB_ENDPOINT_NUMBER_MASK
+
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
-#define PRINT_TRANSFER_WRITE_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK, msg);
-#define PRINT_TRANSFER_READ_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK, msg);
+#define PRINT_TRANSFER_WRITE_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & USB_ENDPOINT_NUMBER_MASK, msg);
+#define PRINT_TRANSFER_READ_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & USB_ENDPOINT_NUMBER_MASK, msg);
 
 static int usb = -1;
 static int adapter = -1;
@@ -36,22 +38,21 @@ static uint8_t endpointsSent = 0;
 
 static uint8_t inPending = 0;
 
-static uint8_t serialToUsbEndpoint[2][LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
-static uint8_t usbToSerialEndpoint[2][LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+static uint8_t serialToUsbEndpoint[2][ENDPOINT_MAX_NUMBER] = {};
+static uint8_t usbToSerialEndpoint[2][ENDPOINT_MAX_NUMBER] = {};
 
-#define ENDPOINT_TO_INDEX(ENDPOINT) (((ENDPOINT) & LIBUSB_ENDPOINT_ADDRESS_MASK) - 1)
-#define S2U_ENDPOINT(ENDPOINT) serialToUsbEndpoint[(ENDPOINT) >> 7][ENDPOINT_TO_INDEX(ENDPOINT)]
-#define U2S_ENDPOINT(ENDPOINT) usbToSerialEndpoint[(ENDPOINT) >> 7][ENDPOINT_TO_INDEX(ENDPOINT)]
+#define ENDPOINT_ADDR_TO_INDEX(ENDPOINT) (((ENDPOINT) & USB_ENDPOINT_NUMBER_MASK) - 1)
+#define ENDPOINT_DIR_TO_INDEX(ENDPOINT) ((ENDPOINT) >> 7)
+#define S2U_ENDPOINT(ENDPOINT) serialToUsbEndpoint[ENDPOINT_DIR_TO_INDEX(ENDPOINT)][ENDPOINT_ADDR_TO_INDEX(ENDPOINT)]
+#define U2S_ENDPOINT(ENDPOINT) usbToSerialEndpoint[ENDPOINT_DIR_TO_INDEX(ENDPOINT)][ENDPOINT_ADDR_TO_INDEX(ENDPOINT)]
 
 static struct {
   uint16_t length;
   s_endpointPacket packet;
-} inPackets[LIBUSB_ENDPOINT_ADDRESS_MASK] = {};
+} inPackets[ENDPOINT_MAX_NUMBER] = {};
 
 static uint8_t inEpFifo[MAX_ENDPOINTS] = {};
 static uint8_t nbInEpFifo = 0;
-
-#define TRACE printf("%s\n", __func__);
 
 extern volatile int done;
 
@@ -66,7 +67,7 @@ static int send_next_in_packet() {
   }
 
   if (nbInEpFifo > 0) {
-    uint8_t inPacketIndex = ENDPOINT_TO_INDEX(inEpFifo[0]);
+    uint8_t inPacketIndex = ENDPOINT_ADDR_TO_INDEX(inEpFifo[0]);
     int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&inPackets[inPacketIndex].packet, inPackets[inPacketIndex].length);
     if(ret < 0) {
       return -1;
@@ -86,7 +87,7 @@ static int queue_in_packet(unsigned char endpoint, const void * buf, int transfe
     return -1;
   }
 
-  uint8_t inPacketIndex = ENDPOINT_TO_INDEX(endpoint);
+  uint8_t inPacketIndex = ENDPOINT_ADDR_TO_INDEX(endpoint);
   inPackets[inPacketIndex].packet.endpoint = U2S_ENDPOINT(endpoint);
   memcpy(inPackets[inPacketIndex].packet.data, buf, transfered);
   inPackets[inPacketIndex].length = transfered + 1;
@@ -164,9 +165,6 @@ int usb_write_callback(int user, unsigned char endpoint, int status) {
   switch (status) {
   case E_TRANSFER_TIMED_OUT:
     PRINT_TRANSFER_WRITE_ERROR(endpoint, "TIMEOUT")
-    if (endpoint == 0) {
-      return -1;
-    }
     break;
   case E_TRANSFER_STALL:
     if (endpoint == 0) {
@@ -279,42 +277,42 @@ void fix_endpoints() {
               descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
           uint8_t originalEndpoint = endpoint->bEndpointAddress;
           ++endpointNumber;
-          endpoint->bEndpointAddress = (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) | endpointNumber;
+          endpoint->bEndpointAddress = (endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) | endpointNumber;
           printf("    endpoint:");
-          printf(" %s", ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) ? "IN" : "OUT");
+          printf(" %s", ((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN) ? "IN" : "OUT");
           printf(" %s",
-              (endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_INTERRUPT ? "INTERRUPT" :
-              (endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_BULK ? "BULK" :
-              (endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_ISOCHRONOUS ?
+              (endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_INT ? "INTERRUPT" :
+              (endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_BULK ? "BULK" :
+              (endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_ISOC ?
                   "ISOCHRONOUS" : "UNKNOWN");
-          printf(" %hu", originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK);
+          printf(" %hu", originalEndpoint & USB_ENDPOINT_NUMBER_MASK);
           if (originalEndpoint != endpoint->bEndpointAddress) {
             printf(KRED" -> %hu"KNRM, endpointNumber);
           }
           printf("\n");
-          if ((originalEndpoint & LIBUSB_ENDPOINT_ADDRESS_MASK) == 0) {
+          if ((originalEndpoint & USB_ENDPOINT_NUMBER_MASK) == 0) {
             PRINT_ERROR_OTHER("invalid endpoint number")
             continue;
           }
           if (configurationIndex > 0) {
             continue;
           }
-          if ((endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) != LIBUSB_TRANSFER_TYPE_INTERRUPT) {
-            printf("      endpoint %hu won't be configured (not an INTERRUPT endpoint)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK);
+          if ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) != USB_ENDPOINT_XFER_INT) {
+            printf("      endpoint %hu won't be configured (not an INTERRUPT endpoint)\n", endpoint->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
             continue;
           }
           if (endpoint->wMaxPacketSize > MAX_PAYLOAD_SIZE_EP) {
-            printf("      endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
+            printf("      endpoint %hu won't be configured (max packet size %hu > %hu)\n", endpoint->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK, endpoint->wMaxPacketSize, MAX_PAYLOAD_SIZE_EP);
             continue;
           }
           if (endpointNumber > MAX_ENDPOINTS) {
-            printf("      endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & LIBUSB_ENDPOINT_ADDRESS_MASK, endpointNumber, MAX_ENDPOINTS);
+            printf("      endpoint %hu won't be configured (endpoint number %hhu > %hhu)\n", endpoint->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK, endpointNumber, MAX_ENDPOINTS);
             continue;
           }
           U2S_ENDPOINT(originalEndpoint) = endpoint->bEndpointAddress;
           S2U_ENDPOINT(endpoint->bEndpointAddress) = originalEndpoint;
           pEndpoints->number = endpoint->bEndpointAddress;
-          pEndpoints->type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+          pEndpoints->type = endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
           pEndpoints->size = endpoint->wMaxPacketSize;
           ++pEndpoints;
         }
@@ -340,13 +338,13 @@ int send_descriptors() {
     warn = 1; \
   }
 
-  ADD_DESCRIPTOR((LIBUSB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
-  ADD_DESCRIPTOR((LIBUSB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)
+  ADD_DESCRIPTOR((USB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
+  ADD_DESCRIPTOR((USB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)
 
   unsigned int descNumber;
   for(descNumber = 0; descNumber < descriptors->device.bNumConfigurations; ++descNumber) {
 
-    ADD_DESCRIPTOR((LIBUSB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw)
+    ADD_DESCRIPTOR((USB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw)
   }
 
   for(descNumber = 0; descNumber < descriptors->nbOthers; ++descNumber) {
@@ -392,9 +390,10 @@ static int poll_all_endpoints() {
 
   int ret = 0;
   unsigned char i;
-  for (i = 0; i < sizeof(serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7]) / sizeof(*serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7]) && ret >= 0; ++i) {
-    if (serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7][i]) {
-      ret = usbasync_poll(usb, serialToUsbEndpoint[LIBUSB_ENDPOINT_IN >> 7][i]);
+  for (i = 0; i < sizeof(*serialToUsbEndpoint) / sizeof(**serialToUsbEndpoint) && ret >= 0; ++i) {
+    uint8_t endpoint = S2U_ENDPOINT(USB_DIR_IN | i);
+    if (endpoint) {
+      ret = usbasync_poll(usb, endpoint);
     }
   }
   return ret;
@@ -409,9 +408,12 @@ static int send_out_packet(s_packet * packet) {
 
 static int send_control_packet(s_packet * packet) {
 
-  /*
-   * TODO MLA: endpoint mapping for standard endpoint requests
-   */
+  struct usb_ctrlrequest * setup = (struct usb_ctrlrequest *)packet->value;
+  if ((setup->bRequestType & USB_RECIP_MASK) == USB_RECIP_ENDPOINT) {
+    if (setup->wIndex != 0) {
+      setup->wIndex = S2U_ENDPOINT(setup->wIndex);
+    }
+  }
 
   return usbasync_write(usb, 0, packet->value, packet->header.length);
 }

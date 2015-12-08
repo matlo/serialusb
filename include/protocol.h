@@ -15,12 +15,13 @@
 #define PACKED __attribute__((packed))
 #endif
 
+// the atmega32u4 has 2.5Kbytes SRAM
 #define MAX_DESCRIPTORS_SIZE 1024
 
 #define MAX_DESCRIPTORS 32 // should not exceed 255
 
-//#define MAX_ENDPOINTS 6 // excluding the control endpoint
-#define MAX_ENDPOINTS 5
+// the atmega32u4 supports up to 6 non-control endpoints
+#define MAX_ENDPOINTS 6
 
 #define MAX_PACKET_SIZE_EP0 64
 

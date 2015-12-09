@@ -10,7 +10,7 @@
 
 static int tfd = -1;
 
-inline int timer_get()
+int timer_get()
 {
   return tfd;
 }

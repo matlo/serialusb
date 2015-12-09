@@ -118,7 +118,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
 
   if (endpoint == 0) {
 
-    if (status > MAX_PACKET_SIZE) {
+    if (status > (int)MAX_PACKET_VALUE_SIZE) {
       PRINT_ERROR_OTHER("too many bytes transfered")
       set_done();
       return -1;

@@ -30,11 +30,11 @@ serialusb attempts to meet the following goals:
 
 These goals led to the following decisions:
 
-* use the same hardware as the [GIMX DIY USB adapter](http://gimx.fr/wiki/index.php?title=DIY_USB_adapter) - 1.
-* interrupt-driven event processing in a single-threaded process - 2.
-* once the proxy is started, only use [libusb's asynchronous API](http://libusb.sourceforge.net/api-1.0/group__asyncio.html) - 2.
-* use raw descriptors (don't reconstruct descriptors) - 3.
-* abstract USB device and serial port handling - 4.
+* use the same hardware as the [GIMX DIY USB adapter](http://gimx.fr/wiki/index.php?title=DIY_USB_adapter) &rarr; 1.
+* interrupt-driven event processing in a single-threaded process &rarr; 2.
+* once the proxy is started, only use [libusb's asynchronous API](http://libusb.sourceforge.net/api-1.0/group__asyncio.html) &rarr; 2.
+* use raw descriptors (don't reconstruct descriptors) &rarr; 3.
+* abstract USB device and serial port handling &rarr; 4.
 
 # Software requirements
 
@@ -55,6 +55,7 @@ These goals led to the following decisions:
 # Limitations
 
 * Only control and interrupt endpoints are currently supported.
+* Only 254 bytes can be tranfered in the data stage of non-standard control tranfers.
 * This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
 * Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb does a few changes to the USB descriptors used at the enumeration step.
 * For now the UART speed is 500kbps, which is not enough to reach the theorical max baudrate of 64kB/s.

@@ -8,9 +8,8 @@
 #include <LUFA/Drivers/Peripheral/Serial.h>
 #include "../include/protocol.h"
 
-#define MAX_CONTROL_TRANSFER_SIZE 64
+#define MAX_CONTROL_TRANSFER_SIZE MAX_PACKET_VALUE_SIZE
 
-#define USART_BAUDRATE 500000
 #define USART_DOUBLE_SPEED false
 
 /*

@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <GE.h>
 
-#define BAUDRATE 500000
+#define USART_BAUDRATE 500000
 
 #define MAX_ADAPTERS 7
 
@@ -96,7 +96,7 @@ int adapter_send(int adapter, unsigned char type, const unsigned char * data, un
 
   do {
 
-    unsigned char length = sizeof(((s_packet *)NULL)->value);
+    unsigned char length = MAX_PACKET_VALUE_SIZE;
     if(count < length) {
 
       length = count;
@@ -119,7 +119,7 @@ int adapter_send(int adapter, unsigned char type, const unsigned char * data, un
 
 int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE_CALLBACK fp_write, ADAPTER_CLOSE_CALLBACK fp_close) {
 
-  int serial = serialasync_open(port, BAUDRATE);
+  int serial = serialasync_open(port, USART_BAUDRATE);
   if (serial < 0) {
     return -1;
   }

@@ -15,6 +15,8 @@
 #define PACKED __attribute__((packed))
 #endif
 
+#define USART_BAUDRATE 500000
+
 // the atmega32u4 has 2.5Kbytes SRAM
 #define MAX_DESCRIPTORS_SIZE 1024
 
@@ -60,17 +62,21 @@ typedef enum {
 #define BYTE_LEN_0_BYTE   0x00
 #define BYTE_LEN_1_BYTE   0x01
 
-#define MAX_PACKET_SIZE (UCHAR_MAX+1)
+// this is the max serial packet size
+#define MAX_PACKET_SIZE 256
 
 typedef struct PACKED {
-  unsigned char type;
-  unsigned char length;
+  uint8_t type;
+  uint8_t length;
 } s_header;
+
+// this should not exceed 255 bytes
+#define MAX_PACKET_VALUE_SIZE (MAX_PACKET_SIZE - sizeof(s_header))
 
 typedef struct PACKED
 {
   s_header header;
-  unsigned char value[MAX_PACKET_SIZE - sizeof(s_header)];
+  uint8_t value[MAX_PACKET_VALUE_SIZE];
 } s_packet;
 
 #endif

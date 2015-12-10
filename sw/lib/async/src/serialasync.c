@@ -223,7 +223,8 @@ int serialasync_set_read_size(int device, unsigned int size) {
  *
  * \return 0 in case of success, or -1 in case of error
  */
-int serialasync_register(int device, int user, ASYNC_READ_CALLBACK fp_read, ASYNC_WRITE_CALLBACK fp_write, ASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register) {
+int serialasync_register(int device, int user, ASYNC_READ_CALLBACK fp_read, ASYNC_WRITE_CALLBACK fp_write,
+    ASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register) {
 
     return async_register(device, user, fp_read, fp_write, fp_close, fp_register);
 }

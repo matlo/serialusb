@@ -6,6 +6,8 @@
 #ifndef USBASYNC_H_
 #define USBASYNC_H_
 
+#include <gpoll.h>
+
 #include <libusb-1.0/libusb.h>
 #include <linux/usb/ch9.h>
 
@@ -84,9 +86,11 @@ int usbasync_open_path(const char * path);
 s_usb_descriptors * usbasync_get_usb_descriptors(int device);
 int usbasync_close(int device);
 int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout);
-int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close);
+int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
+    USBASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register);
 int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
-int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout);
+int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count,
+    unsigned int timeout);
 int usbasync_poll(int device, unsigned char endpoint);
 
 #endif /* USBASYNC_H_ */

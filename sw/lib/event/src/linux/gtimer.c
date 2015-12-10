@@ -54,7 +54,6 @@ static int close_callback(int timer) {
   return timers[timer].fp_close(timers[timer].user);
 }
 
-
 static int read_callback(int timer) {
 
   CHECK_TIMER(timer, -1)
@@ -74,7 +73,8 @@ static int read_callback(int timer) {
   return timers[timer].fp_read(timers[timer].user);
 }
 
-GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close) {
+GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close,
+    GPOLL_REGISTER_FD fp_register) {
 
   __time_t sec = usec / 1000000;
   __time_t nsec = (usec - sec * 1000000) * 1000;
@@ -100,7 +100,7 @@ GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE
     return -1;
   }
 
-  ret = gpoll_register_fd(tfd, slot, read_callback, NULL, close_callback);
+  ret = fp_register(tfd, slot, read_callback, NULL, close_callback);
   if (ret < 0) {
     close(tfd);
     return -1;

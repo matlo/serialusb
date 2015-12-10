@@ -546,7 +546,7 @@ int proxy_init(char * port) {
       return -1;
     }
 
-    int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback);
+    int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
     if (ret < 0) {
       return -1;
     }
@@ -570,7 +570,7 @@ static int timer_read(int user) {
 
 int proxy_start() {
 
-  GTIMER t = gtimer_start(0, 10000, timer_read, timer_close);
+  GTIMER t = gtimer_start(0, 10000, timer_read, timer_close, gpoll_register_fd);
   if (t == INVALID_GTIMER_VALUE) {
     return -1;
   }

@@ -57,6 +57,28 @@ static uint8_t nbInEpFifo = 0;
 
 static volatile int done;
 
+#define EP_PROP_IN    (1 << 0)
+#define EP_PROP_OUT   (1 << 1)
+#define EP_PROP_BIDIR (1 << 2)
+
+#define EP_PROP_INT   (1 << 3)
+#define EP_PROP_BLK   (1 << 4)
+#define EP_PROP_ISO   (1 << 5)
+
+/*
+ * the atmega32u4 supports up to 6 non-control endpoints
+ * that can be IN or OUT (not BIDIR),
+ * and only the INTERRUPT type is supported.
+ */
+static uint8_t targetProperties[ENDPOINT_MAX_NUMBER] = {
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+  EP_PROP_IN | EP_PROP_OUT | EP_PROP_INT,
+};
+
 static int send_next_in_packet() {
 
   if (inPending) {
@@ -246,18 +268,98 @@ static char * usb_select() {
   return path;
 }
 
-void fix_endpoints() {
+void print_endpoint_properties(uint8_t epProps[ENDPOINT_MAX_NUMBER]) {
 
-  /*
-   * TODO MLA:
-   * Endpoints should not be renumbered whenever possible.
-   * A good strategy would be to renumber OUT endpoints only.
-   */
+  unsigned char i;
+  for (i = 0; i < ENDPOINT_MAX_NUMBER; ++i) {
+    if (epProps[i] != 0) {
+      printf("%hhu", i + 1);
+      if (epProps[i] & EP_PROP_IN) {
+        printf(" IN");
+      }
+      if (epProps[i] & EP_PROP_OUT) {
+        printf(" OUT");
+      }
+      if (epProps[i] & EP_PROP_BIDIR) {
+        printf(" BIDIR");
+      }
+      if (epProps[i] & EP_PROP_INT) {
+        printf(" INTERRUPT");
+      }
+      if (epProps[i] & EP_PROP_BLK) {
+        printf(" BULK");
+      }
+      if (epProps[i] & EP_PROP_ISO) {
+        printf(" ISOCHRONOUS");
+      }
+      printf("\n");
+    }
+  }
+}
+
+void get_endpoint_properties(unsigned char configurationIndex, uint8_t epProps[ENDPOINT_MAX_NUMBER]) {
+
+  struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
+  unsigned char interfaceIndex;
+  for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
+    struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
+    unsigned char altInterfaceIndex;
+    for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
+      struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
+      unsigned char endpointIndex;
+      for (endpointIndex = 0; endpointIndex < pAltInterface->bNumEndpoints; ++endpointIndex) {
+        struct usb_endpoint_descriptor * endpoint =
+            descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
+        uint8_t epIndex = ENDPOINT_ADDR_TO_INDEX(endpoint->bEndpointAddress);
+        switch (endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) {
+        case LIBUSB_TRANSFER_TYPE_INTERRUPT:
+          epProps[epIndex] |= EP_PROP_INT;
+          break;
+        case LIBUSB_TRANSFER_TYPE_BULK:
+          epProps[epIndex] |= EP_PROP_BLK;
+          break;
+        case LIBUSB_TRANSFER_TYPE_ISOCHRONOUS:
+          epProps[epIndex] |= EP_PROP_ISO;
+          break;
+        }
+        if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) {
+          epProps[epIndex] |= EP_PROP_IN;
+        } else {
+          epProps[epIndex] |= EP_PROP_OUT;
+        }
+        if ((epProps[epIndex] & (EP_PROP_IN | EP_PROP_OUT)) == (EP_PROP_IN | EP_PROP_OUT)) {
+          epProps[epIndex] |= EP_PROP_BIDIR;
+        }
+      }
+    }
+  }
+}
+
+int compare_endpoint_properties(uint8_t epPropsSource[ENDPOINT_MAX_NUMBER], uint8_t epPropsTarget[ENDPOINT_MAX_NUMBER]) {
+
+  unsigned char i;
+  for (i = 0; i < ENDPOINT_MAX_NUMBER; ++i) {
+    if (epPropsSource[i] != 0) {
+      if ((epPropsTarget[i] & epPropsSource[i]) != epPropsSource[i]) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+void fix_endpoints() {
 
   pEndpoints = endpoints;
 
   unsigned char configurationIndex;
   for (configurationIndex = 0; configurationIndex < descriptors->device.bNumConfigurations; ++configurationIndex) {
+    uint8_t sourceProperties[ENDPOINT_MAX_NUMBER] = {};
+    get_endpoint_properties(configurationIndex, sourceProperties);
+    /*print_endpoint_properties(usedEndpoints);
+    print_endpoint_properties(endpointProperties);*/
+    int renumber = compare_endpoint_properties(sourceProperties, targetProperties);
     unsigned char endpointNumber = 0;
     struct p_configuration * pConfiguration = descriptors->configurations + configurationIndex;
     printf("configuration: %hhu\n", pConfiguration->descriptor->bConfigurationValue);
@@ -273,8 +375,10 @@ void fix_endpoints() {
           struct usb_endpoint_descriptor * endpoint =
               descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
           uint8_t originalEndpoint = endpoint->bEndpointAddress;
-          ++endpointNumber;
-          endpoint->bEndpointAddress = (endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) | endpointNumber;
+          if (renumber) {
+            ++endpointNumber;
+            endpoint->bEndpointAddress = (endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) | endpointNumber;
+          }
           printf("    endpoint:");
           printf(" %s", ((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN) ? "IN" : "OUT");
           printf(" %s",

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2011 Mathieu Laurendeau <mat.lau@laposte.net>
+ Copyright (c) 2015 Mathieu Laurendeau <mat.lau@laposte.net>
  License: GPLv3
  */
 

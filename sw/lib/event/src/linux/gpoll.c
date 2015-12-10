@@ -34,8 +34,8 @@ int gpoll_register_fd(int fd, int user, GPOLL_READ_CALLBACK fp_read, GPOLL_WRITE
     PRINT_ERROR_OTHER("fp_read and fp_write are NULL")
     return -1;
   }
-  if (fd >= MAX_SOURCES) {
-    PRINT_ERROR_OTHER("fd is higher than or equal to MAX_SOURCES")
+  if (fd < 0 || fd >= MAX_SOURCES) {
+    PRINT_ERROR_OTHER("fd is invalid")
     return -1;
   }
   sources[fd].user = user;

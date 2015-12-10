@@ -13,7 +13,6 @@ typedef int (* ADAPTER_WRITE_CALLBACK)(int user, int transfered);
 typedef int (* ADAPTER_CLOSE_CALLBACK)(int user);
 
 int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE_CALLBACK fp_write, ADAPTER_CLOSE_CALLBACK fp_close);
-int adapter_recv(int adapter, const void * buf, unsigned int count);
 int adapter_send(int adapter, unsigned char type, const unsigned char * data, unsigned int count);
 
 #endif /* ADAPTER_H_ */

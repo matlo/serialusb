@@ -10,7 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <GE.h>
+#include <gpoll.h>
+#include <gtimer.h>
 
 #define ENDPOINT_MAX_NUMBER USB_ENDPOINT_NUMBER_MASK
 
@@ -54,11 +55,7 @@ static struct {
 static uint8_t inEpFifo[MAX_ENDPOINTS] = {};
 static uint8_t nbInEpFifo = 0;
 
-extern volatile int done;
-
-static void set_done() {
-  done = 1;
-}
+static volatile int done;
 
 static int send_next_in_packet() {
 
@@ -120,7 +117,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
 
     if (status > (int)MAX_PACKET_VALUE_SIZE) {
       PRINT_ERROR_OTHER("too many bytes transfered")
-      set_done();
+      done = 1;
       return -1;
     }
 
@@ -137,7 +134,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
 
     if (status > MAX_PAYLOAD_SIZE_EP) {
       PRINT_ERROR_OTHER("too many bytes transfered")
-      set_done();
+      done = 1;
       return -1;
     }
 
@@ -145,13 +142,13 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
 
       int ret = queue_in_packet(endpoint, buf, status);
       if (ret < 0) {
-        set_done();
+        done = 1;
         return -1;
       }
 
       ret = send_next_in_packet();
       if (ret < 0) {
-        set_done();
+        done = 1;
         return -1;
       }
     }
@@ -170,7 +167,7 @@ int usb_write_callback(int user, unsigned char endpoint, int status) {
     if (endpoint == 0) {
       int ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
       if (ret < 0) {
-        set_done();
+        done = 1;
         return -1;
       }
     }
@@ -182,7 +179,7 @@ int usb_write_callback(int user, unsigned char endpoint, int status) {
     if (endpoint == 0) {
       int ret = adapter_send(adapter, E_TYPE_CONTROL, NULL, 0);
       if (ret < 0) {
-        set_done();
+        done = 1;
         return -1;
       }
     }
@@ -194,14 +191,14 @@ int usb_write_callback(int user, unsigned char endpoint, int status) {
 
 int usb_close_callback(int user) {
 
-  set_done();
+  done = 1;
   return 1;
 }
 
 int adapter_send_callback(int user, int transfered) {
 
   if (transfered < 0) {
-    set_done();
+    done = 1;
     return 1;
   }
 
@@ -210,7 +207,7 @@ int adapter_send_callback(int user, int transfered) {
 
 int adapter_close_callback(int user) {
 
-  set_done();
+  done = 1;
   return 1;
 }
 
@@ -483,7 +480,7 @@ static int process_packet(int user, s_packet * packet)
   }
 
   if(ret < 0) {
-    set_done();
+    done = 1;
   }
 
   return ret;
@@ -549,7 +546,7 @@ int proxy_init(char * port) {
       return -1;
     }
 
-    int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, GE_AddSource);
+    int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback);
     if (ret < 0) {
       return -1;
     }
@@ -558,7 +555,41 @@ int proxy_init(char * port) {
   return 0;
 }
 
-int proxy_stop() {
+static int timer_close(int user) {
+  done = 1;
+  return 1;
+}
+
+static int timer_read(int user) {
+  /*
+   * Returning a non-zero value will make gpoll return,
+   * this allows to check the 'done' variable.
+   */
+  return 1;
+}
+
+int proxy_start() {
+
+  GTIMER t = gtimer_start(0, 10000, timer_read, timer_close);
+  if (t == INVALID_GTIMER_VALUE) {
+    return -1;
+  }
+
+  while (!done) {
+
+    gpoll();
+  }
+
+  gtimer_close(t);
+
+  return 0;
+}
+
+void proxy_stop() {
+  done = 1;
+}
+
+int proxy_clean() {
 
   if (adapter >= 0) {
     adapter_send(adapter, E_TYPE_RESET, NULL, 0);

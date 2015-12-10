@@ -4,6 +4,7 @@
  */
 
 #include <usbasync.h>
+#include <gpoll.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -1131,7 +1132,7 @@ static int close_callback(int device) {
 }
 
 int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
-    USBASYNC_CLOSE_CALLBACK fp_close, USBASYNC_REGISTER_SOURCE fp_register) {
+    USBASYNC_CLOSE_CALLBACK fp_close) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
@@ -1139,7 +1140,7 @@ int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBA
   int poll_i;
   for (poll_i = 0; pfd_usb[poll_i] != NULL; ++poll_i) {
 
-    fp_register(pfd_usb[poll_i]->fd, device, handle_events, handle_events, close_callback);
+    gpoll_register_fd(pfd_usb[poll_i]->fd, device, handle_events, handle_events, close_callback);
   }
   free(pfd_usb);
 

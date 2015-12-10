@@ -5,9 +5,9 @@
 
 #include <adapter.h>
 #include <serialasync.h>
+#include <gpoll.h>
 #include <string.h>
 #include <stdio.h>
-#include <GE.h>
 
 #define USART_BAUDRATE 500000
 
@@ -46,7 +46,7 @@ static inline int adapter_check(int adapter, const char * file, unsigned int lin
     return retValue; \
   }
 
-int adapter_recv(int adapter, const void * buf, unsigned int count) {
+static int adapter_recv(int adapter, const void * buf, unsigned int count) {
 
   ADAPTER_CHECK(adapter, -1)
 
@@ -129,7 +129,7 @@ int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE
     if (adapters[i].serial < 0) {
       adapters[i].serial = serial;
       adapters[i].fp_packet_cb = fp_read;
-      int ret = serialasync_register(serial, i, adapter_recv, fp_write, fp_close, GE_AddSource);
+      int ret = serialasync_register(serial, i, adapter_recv, fp_write, fp_close, gpoll_register_fd);
       if (ret < 0) {
         return -1;
       }

@@ -36,11 +36,6 @@ typedef enum {
 typedef int (* USBASYNC_READ_CALLBACK)(int user, unsigned char endpoint, const void * buf, int status);
 typedef int (* USBASYNC_WRITE_CALLBACK)(int user, unsigned char endpoint, int status);
 typedef int (* USBASYNC_CLOSE_CALLBACK)(int user);
-#ifndef WIN32
-typedef void (* USBASYNC_REGISTER_SOURCE)(int fd, int id, int (*fp_read)(int), int (*fp_write)(int), int (*fp_cleanup)(int));
-#else
-typedef void (* USBASYNC_REGISTER_SOURCE)(HANDLE handle, int id, int (*fp_read)(int), int (*fp_write)(int), int (*fp_cleanup)(int));
-#endif
 
 struct p_altInterface {
   struct usb_interface_descriptor * descriptor;
@@ -89,7 +84,7 @@ int usbasync_open_path(const char * path);
 s_usb_descriptors * usbasync_get_usb_descriptors(int device);
 int usbasync_close(int device);
 int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout);
-int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close, USBASYNC_REGISTER_SOURCE fp_register);
+int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write, USBASYNC_CLOSE_CALLBACK fp_close);
 int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
 int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout);
 int usbasync_poll(int device, unsigned char endpoint);

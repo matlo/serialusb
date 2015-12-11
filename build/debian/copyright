@@ -1,0 +1,23 @@
+This work was packaged for Debian by:
+
+    Matlo <mat.lau@laposte.net> on #DATE#
+
+It was downloaded from:
+
+    https://github.com/matlo/serialusb
+
+Copyright:
+
+    Copyright (C) 2010-#YEAR# Mathieu Laurendeau <mat.lau@laposte.net>
+
+License:
+
+    GPL-3: see "/usr/share/common-licenses/GPL-3".
+
+The Debian packaging is:
+
+    Copyright (C) #YEAR# Matlo <mat.lau@laposte.net>
+
+and is licensed under the GPL version 3,
+see "/usr/share/common-licenses/GPL-3".
+

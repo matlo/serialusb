@@ -1,0 +1,13 @@
+Source: serialusb
+Section: unknown
+Priority: extra
+Maintainer: Matlo <mat.lau@laposte.net>
+Build-Depends: debhelper (>= 7.0.50~), libusb-1.0-0-dev
+Standards-Version: 3.8.4
+Homepage: https://github.com/matlo/serialusb
+
+Package: serialusb
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libusb-1.0-0, tcpdump
+Description: serialusb
+ serialusb is a cheap (~5$) USB proxy intended to be used with input devices.

@@ -1,0 +1,98 @@
+#!/bin/bash
+
+#don't forget to add universe to ~/.pbuilderrc
+
+#uncomment in a new build environment
+#sudo apt-get install gdebi devscripts pbuilder debhelper
+
+PACKAGE="serialusb"
+VERSION=`cat version`
+TARGET_ARCH=`cat architecture`
+DATE=`date -R`
+YEAR=`date +"%Y"`
+BRANCH="master"
+
+echo "Version number? (default: "$VERSION")"
+
+read NEW_VERSION
+
+if [ -z $NEW_VERSION ]
+then
+  NEW_VERSION=$VERSION
+fi
+
+FIXED=`curl -s -L "https://github.com/matlo/serialusb/issues?labels=serialusb+v$NEW_VERSION&state=closed" | grep "        #[0-9][0-9]*" | sed 's/        //g' | sed ':a;N;$!ba;s/\n/ /g'`
+
+echo Fixed: $FIXED
+echo Date: $DATE
+echo Year: $YEAR
+
+echo "Target architecture? (default: "$TARGET_ARCH")"
+
+read NEW_TARGET_ARCH
+
+if [ -z $NEW_TARGET_ARCH ]
+then
+  NEW_TARGET_ARCH=$TARGET_ARCH
+fi
+
+if [ -z $NEW_VERSION ]
+then
+  echo No version specified!
+  exit
+fi
+
+if [ -z $NEW_TARGET_ARCH ]
+then
+  echo No architecture specified!
+  exit
+fi
+
+echo $NEW_VERSION > version
+echo $NEW_TARGET_ARCH > architecture
+
+if [ "$NEW_TARGET_ARCH" != "$TARGET_ARCH" ]
+then
+  sudo pbuilder create --architecture $NEW_TARGET_ARCH
+fi
+
+rm -rf $PACKAGE*
+
+git clone -b $BRANCH --single-branch --depth 1 https://github.com/matlo/serialusb.git
+
+mv serialusb/sw $PACKAGE-$NEW_VERSION
+mv serialusb/include/protocol.h $PACKAGE-$NEW_VERSION/include
+rm -rf serialusb
+
+cp -r debian $PACKAGE-$NEW_VERSION
+
+cd $PACKAGE-$NEW_VERSION
+
+sed -i "s/#VERSION#/$NEW_VERSION/" debian/changelog
+sed -i "s/#FIXED#/$FIXED/" debian/changelog
+sed -i "s/#DATE#/$DATE/" debian/changelog
+
+sed -i "s/#DATE#/$DATE/" debian/copyright
+sed -i "s/#YEAR#/$YEAR/" debian/copyright
+
+if [ -n $NEW_VERSION ]
+then
+  MAJOR=$(echo $NEW_VERSION | awk -F"." '{print $1}')
+  MINOR=$(echo $NEW_VERSION | awk -F"." '{print $2}')
+  echo Major release number: $MAJOR
+  echo Minor release number: $MINOR
+  if [ -z $MAJOR ] || [ -z $MINOR ]
+  then
+    echo Invalid release number!
+    exit
+  fi
+  
+  sed -i "s/#define[ ]*INFO_VERSION[ ]*\"[0-9]*.[0-9]*\"/#define INFO_VERSION \"$MAJOR.$MINOR\"/" info.h
+  sed -i "s/#define[ ]*INFO_YEAR[ ]*\"2010-[0-9]*\"/#define INFO_YEAR \"2010-$(date '+%Y')\"/" info.h
+fi
+
+debuild --no-tgz-check -us -uc
+
+sudo pbuilder build ../$PACKAGE\_$NEW_VERSION-1.dsc --architecture $NEW_TARGET_ARCH
+
+cp /var/cache/pbuilder/result/$PACKAGE\_$NEW_VERSION-1_*.deb ..

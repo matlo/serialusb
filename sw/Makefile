@@ -4,7 +4,7 @@ prefix=$(DESTDIR)/usr
 bindir=$(prefix)/bin
 
 BINS=serialusb
-SCRIPTS=serialusb-launcher.sh
+SCRIPTS=serialusb-capture.sh
 
 OBJECTS := $(patsubst %.c,%.o,$(shell find . -name "*.c"))
 

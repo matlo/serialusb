@@ -12,19 +12,10 @@
 extern "C" {
 #endif
 
-#ifndef WIN32
-#define GTIMER int
-#define INVALID_GTIMER_VALUE -1
-#else
-#include <windows.h>
-#define GTIMER HANDLE
-#define INVALID_GTIMER_VALUE INVALID_HANDLE_VALUE
-#endif
-
-GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close,
+int gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close,
     GPOLL_REGISTER_FD fp_register);
-int gtimer_close(GTIMER tfd);
-int gtimer_read(GTIMER tfd);
+int gtimer_close(int timer);
+int gtimer_read(int timer);
 
 #ifdef __cplusplus
 }

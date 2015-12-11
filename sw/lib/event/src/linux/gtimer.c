@@ -73,7 +73,7 @@ static int read_callback(int timer) {
   return timers[timer].fp_read(timers[timer].user);
 }
 
-GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close,
+int gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CALLBACK fp_close,
     GPOLL_REGISTER_FD fp_register) {
 
   __time_t sec = usec / 1000000;
@@ -87,7 +87,7 @@ GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE
     return -1;
   }
 
-  int tfd = timerfd_create(CLOCK_REALTIME, 0);
+  int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
   if (tfd < 0) {
     PRINT_ERROR_ERRNO("timerfd_create")
     return -1;
@@ -111,7 +111,7 @@ GTIMER gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE
   timers[slot].fp_read = fp_read;
   timers[slot].fp_close = fp_close;
 
-  return tfd;
+  return slot;
 }
 
 int gtimer_close(int timer) {

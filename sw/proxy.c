@@ -545,6 +545,7 @@ static int process_packet(int user, s_packet * packet)
     ret = send_endpoints();
     break;
   case E_TYPE_ENDPOINTS:
+    printf("Proxy started successfully. Press ctrl+c to stop it.\n");
     ret = poll_all_endpoints();
     break;
   case E_TYPE_IN:

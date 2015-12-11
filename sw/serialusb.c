@@ -22,13 +22,11 @@ int main(int argc, char * argv[]) {
     port = argv[1];
   }
 
-  int ret = proxy_init(port);
-  if (port != NULL && ret == 0) {
+  int ret = proxy_init();
 
-    proxy_start();
+  if (ret == 0 && port != NULL) {
+    proxy_start(port);
   }
-
-  proxy_clean();
 
   return ret;
 }

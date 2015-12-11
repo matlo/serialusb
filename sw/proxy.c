@@ -638,24 +638,6 @@ int proxy_init(char * port) {
 
   fix_endpoints();
 
-  if (port != NULL) {
-
-    adapter = adapter_open(port, process_packet, adapter_send_callback, adapter_close_callback);
-
-    if(adapter < 0) {
-      return -1;
-    }
-
-    if (send_descriptors() < 0) {
-      return -1;
-    }
-
-    int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
-    if (ret < 0) {
-      return -1;
-    }
-  }
-
   return 0;
 }
 
@@ -672,35 +654,39 @@ static int timer_read(int user) {
   return 1;
 }
 
-int proxy_start() {
+int proxy_start(char * port) {
 
-  GTIMER t = gtimer_start(0, 10000, timer_read, timer_close, gpoll_register_fd);
-  if (t == INVALID_GTIMER_VALUE) {
+  adapter = adapter_open(port, process_packet, adapter_send_callback, adapter_close_callback);
+
+  if(adapter < 0) {
+    return -1;
+  }
+
+  if (send_descriptors() < 0) {
+    return -1;
+  }
+
+  int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
+  if (ret < 0) {
+    return -1;
+  }
+
+  int timer = gtimer_start(0, 10000, timer_read, timer_close, gpoll_register_fd);
+  if (timer < 0) {
     return -1;
   }
 
   while (!done) {
-
     gpoll();
   }
 
-  gtimer_close(t);
+  gtimer_close(timer);
+  adapter_send(adapter, E_TYPE_RESET, NULL, 0);
+  usbasync_close(usb);
 
   return 0;
 }
 
 void proxy_stop() {
   done = 1;
-}
-
-int proxy_clean() {
-
-  if (adapter >= 0) {
-    adapter_send(adapter, E_TYPE_RESET, NULL, 0);
-  }
-  if (usb >= 0) {
-    usbasync_close(usb);
-  }
-
-  return 0;
 }

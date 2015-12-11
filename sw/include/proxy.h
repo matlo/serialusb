@@ -6,9 +6,8 @@
 #ifndef PROXY_H_
 #define PROXY_H_
 
-int proxy_init(char * port);
-int proxy_start();
+int proxy_init();
+int proxy_start(char * port);
 void proxy_stop();
-int proxy_clean();
 
 #endif /* PROXY_H_ */

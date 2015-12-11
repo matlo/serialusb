@@ -49,7 +49,7 @@ tcpdump -i usbmon0 -w capture.pcap 2> /dev/null &
 
 test -z "$(pgrep tcpdump)" && echo Failed to start tcpdump! && exit -1
 
-./serialusb ${DEVS[$SELECTED]}
+serialusb ${DEVS[$SELECTED]}
 
 pkill tcpdump
 

@@ -25,6 +25,7 @@
 								<option id="gnu.c.compiler.option.preprocessor.def.symbols.591367386" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="USB_CAN_BE_DEVICE=1"/>
 									<listOptionValue builtIn="false" value="USE_RAM_DESCRIPTORS=1"/>
+									<listOptionValue builtIn="false" value="ARCH_HAS_MULTI_ADDRESS_SPACE=1"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.317136259" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>

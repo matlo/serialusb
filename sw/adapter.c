@@ -52,7 +52,7 @@ static int adapter_recv(int adapter, const void * buf, unsigned int count) {
 
   int ret = 0;
 
-  if(adapters[adapter].bread + count < sizeof(s_packet)) {
+  if(adapters[adapter].bread + count <= sizeof(s_packet)) {
     memcpy((unsigned char *)&adapters[adapter].packet + adapters[adapter].bread, buf, count);
     adapters[adapter].bread += count;
     unsigned int remaining;

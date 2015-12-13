@@ -73,7 +73,7 @@ serialusb ${DEVS[$SELECTED]}
 
 RESULT=$?
 
-kill -SIGINT $PID
+kill -SIGINT $PID 2> /dev/null
 
 test "$RESULT" -eq 0 && echo Failed to start the proxy! && exit -1
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+CAPTURE=capture.pcap
+
 trap ctrl_c INT
 
 function ctrl_c() {
@@ -22,30 +24,46 @@ done
 
 read SELECTED
 
-(test "$SELECTED" -lt 0 || test "$SELECTED" -ge $INDEX) && echo Invalid value! && exit -1
+(test -z $SELECTED || test "$SELECTED" -lt 0 || test "$SELECTED" -ge $INDEX) && echo Invalid value! && exit -1
 
 echo Selected: ${DEVS[$SELECTED]}
 
-modprobe usbmon 2> /dev/null
+! modprobe usbmon 2> /dev/null && echo Failed to load usbmon! && exit -1
 
-test -z "$(lsmod | grep usbmon)" && echo Failed to load usbmon! && exit -1 
-
-if [ -f $PWD/capture.pcap ]
-then
-  echo Overwrite $PWD/capture.pcap? [y/n]
-  read LINE
-  if [ "$LINE" != "y" ]
-  then
-    exit 0
-  fi
-fi
+COUNT=0
+while [ "$COUNT" -lt 5 ]
+do
+  test -c /dev/usbmon0 && break
+  COUNT=$(($COUNT+1))
+  sleep 1
+done
+test "$COUNT" -eq 5 && echo usbmon0 was not found! && exit -1
 
 for PID in `pgrep tcpdump`
 do
-  test -n "$(ls -l /proc/$PID/fd | grep $PWD/capture.pcap)" && kill $PID
+  test -n "$(ls -l /proc/$PID/fd | grep $PWD/$CAPTURE)" && kill $PID
 done
 
-tcpdump -i usbmon0 -w capture.pcap 2> /dev/null &
+if [ -f $CAPTURE ]
+then
+  echo Overwrite $PWD/$CAPTURE? [y/n]
+  read LINE
+  if [ "$LINE" != "y" ]
+  then
+    echo Aborted. && exit 0
+  fi
+  ! rm $CAPTURE 2> /dev/null && echo Failed to remove $CAPTURE! && exit -1
+fi
+
+tcpdump -i usbmon0 -w $CAPTURE 2> /dev/null &
+
+COUNT=0
+while [ "$COUNT" -lt 5 ]
+do
+  test -f $PWD/$CAPTURE && break
+  COUNT=$(($COUNT+1))
+  sleep 1
+done
 
 test -z "$(pgrep tcpdump)" && echo Failed to start tcpdump! && exit -1
 
@@ -53,6 +71,6 @@ serialusb ${DEVS[$SELECTED]}
 
 pkill tcpdump
 
-echo The capture file was saved into $PWD/capture.pcap.
+echo The capture file was saved into $PWD/$CAPTURE.
 echo It can be opened using wireshark!
 

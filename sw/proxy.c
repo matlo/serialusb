@@ -25,6 +25,7 @@
 
 static int usb = -1;
 static int adapter = -1;
+static int init_timer = -1;
 
 static s_usb_descriptors * descriptors = NULL;
 static unsigned char desc[MAX_DESCRIPTORS_SIZE] = {};
@@ -545,6 +546,7 @@ static int process_packet(int user, s_packet * packet)
     ret = send_endpoints();
     break;
   case E_TYPE_ENDPOINTS:
+    gtimer_close(init_timer);
     printf("Proxy started successfully. Press ctrl+c to stop it.\n");
     ret = poll_all_endpoints();
     break;
@@ -664,6 +666,11 @@ int proxy_start(char * port) {
   }
 
   if (send_descriptors() < 0) {
+    return -1;
+  }
+
+  init_timer = gtimer_start(0, 1000000, timer_close, timer_close, gpoll_register_fd);
+  if (init_timer < 0) {
     return -1;
   }
 

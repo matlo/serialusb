@@ -57,6 +57,8 @@ fi
 
 tcpdump -i usbmon0 -w $CAPTURE 2> /dev/null &
 
+PID=$!
+
 COUNT=0
 while [ "$COUNT" -lt 5 ]
 do
@@ -69,8 +71,11 @@ test -z "$(pgrep tcpdump)" && echo Failed to start tcpdump! && exit -1
 
 serialusb ${DEVS[$SELECTED]}
 
-pkill tcpdump
+RESULT=$?
+
+kill -SIGINT $PID
+
+test "$RESULT" -eq 0 && echo Failed to start the proxy! && exit -1
 
 echo The capture file was saved into $PWD/$CAPTURE.
 echo It can be opened using wireshark!
-

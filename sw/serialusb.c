@@ -25,7 +25,7 @@ int main(int argc, char * argv[]) {
   int ret = proxy_init();
 
   if (ret == 0 && port != NULL) {
-    proxy_start(port);
+    ret = proxy_start(port);
   }
 
   return ret;

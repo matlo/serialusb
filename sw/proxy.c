@@ -547,6 +547,7 @@ static int process_packet(int user, s_packet * packet)
     break;
   case E_TYPE_ENDPOINTS:
     gtimer_close(init_timer);
+    init_timer = -1;
     printf("Proxy started successfully. Press ctrl+c to stop it.\n");
     ret = poll_all_endpoints();
     break;
@@ -691,6 +692,11 @@ int proxy_start(char * port) {
   gtimer_close(timer);
   adapter_send(adapter, E_TYPE_RESET, NULL, 0);
   usbasync_close(usb);
+
+  if (init_timer >= 0) {
+    gtimer_close(init_timer);
+    return -1;
+  }
 
   return 0;
 }

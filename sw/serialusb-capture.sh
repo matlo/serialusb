@@ -10,7 +10,7 @@ function ctrl_c() {
 
 test $EUID -ne 0 && echo "This script must be run as root!" 1>&2 && exit 1
 
-test "$(ls /dev/ttyUSB0 | wc -l)" -eq 0 && echo No USB to UART adapter detected! && exit -1 
+test "$(ls /dev/ttyUSB* | wc -l)" -eq 0 && echo No USB to UART adapter detected! && exit -1 
 
 echo Select a USB to UART adapter:
 
@@ -74,8 +74,8 @@ serialusb ${DEVS[$SELECTED]}
 RESULT=$?
 
 kill -SIGINT $PID 2> /dev/null
-
-test "$RESULT" -eq 0 && echo Failed to start the proxy! && exit -1
+echo $RESULT
+test "$RESULT" -ne 0 && echo Failed to start the proxy! && exit -1
 
 echo The capture file was saved into $PWD/$CAPTURE.
 echo It can be opened using wireshark!

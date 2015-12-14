@@ -12,6 +12,7 @@
 #include <string.h>
 #include <gpoll.h>
 #include <gtimer.h>
+#include <names.h>
 
 #define ENDPOINT_MAX_NUMBER USB_ENDPOINT_NUMBER_MASK
 
@@ -245,9 +246,15 @@ static char * usb_select() {
   }
   printf("Available USB devices:\n");
   unsigned int index = 0;
+  char vendor[128], product[128];
   s_usb_dev * current;
   for (current = usb_devs; current != NULL; ++current) {
-    printf("%2d VID 0x%04x PID 0x%04x PATH %s\n", index++, current->vendor_id, current->product_id, current->path);
+    get_vendor_string(vendor, sizeof(vendor), current->vendor_id);
+    get_product_string(product, sizeof(product), current->vendor_id, current->product_id);
+    printf("%2d", index++);
+    printf(" VID 0x%04x (%s)", current->vendor_id, strlen(vendor) ? vendor : "unknown vendor");
+    printf(" PID 0x%04x (%s)", current->product_id, strlen(product) ? product : "unknown product");
+    printf(" PATH %s\n", current->path);
     if (current->next == 0) {
       break;
     }

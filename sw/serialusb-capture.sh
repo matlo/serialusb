@@ -45,8 +45,6 @@ echo Selected: "${DEVS[$SELECTED]}"
 
 ! modprobe usbmon 2> /dev/null && die "Failed to load usbmon."
 
-read
-
 COUNT=0
 while [ "$COUNT" -lt 50 ]
 do

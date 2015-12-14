@@ -59,6 +59,7 @@ These goals led to the following decisions:
 * This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
 * Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb does a few changes to the USB descriptors used at the enumeration step.
 * For now the UART speed is 500kbps, which is not enough to reach the theorical max baudrate of 64kB/s.
+* When using a Raspberry Pi as the proxy host, expect issues with devices using interrupt OUT endpoints.
 
 # Licence
 

@@ -1,6 +1,11 @@
 #!/bin/bash
 
-CAPTURE=capture.pcap
+CAPTURE="$PWD/capture.pcap"
+
+function die() {
+  echo "$1"
+  exit -1
+}
 
 trap ctrl_c INT
 
@@ -8,74 +13,122 @@ function ctrl_c() {
   pkill -SIGINT serialusb
 }
 
-test $EUID -ne 0 && echo "This script must be run as root!" 1>&2 && exit 1
+test $EUID -ne 0 && die "This script must be run as root!"
 
-test "$(ls /dev/ttyUSB* | wc -l)" -eq 0 && echo No USB to UART adapter detected! && exit -1 
+#
+# USB to UART adapter selection.
+#
+
+DEVICES="$(ls /dev/ttyUSB* 2> /dev/null)"
+
+test -z "$DEVICES" && die "No USB to UART adapter detected!"
 
 echo Select a USB to UART adapter:
 
 INDEX=0
-for DEV in /dev/ttyUSB*
+for DEV in $DEVICES
 do
-  echo $INDEX: $DEV
-  DEVS[$INDEX]=$DEV
-  INDEX=$(($INDEX+1))
+  echo $INDEX: "$DEV"
+  DEVS[$INDEX]="$DEV"
+  INDEX=$((INDEX+1))
 done
 
-read SELECTED
+read -r SELECTED
 
-(test -z $SELECTED || test "$SELECTED" -lt 0 || test "$SELECTED" -ge $INDEX) && echo Invalid value! && exit -1
+(test -z "$SELECTED" || test "$SELECTED" -lt 0 || test "$SELECTED" -ge $INDEX) && die "Invalid value."
 
-echo Selected: ${DEVS[$SELECTED]}
+echo Selected: "${DEVS[$SELECTED]}"
 
-! modprobe usbmon 2> /dev/null && echo Failed to load usbmon! && exit -1
+#
+# Usbmon insertion.
+#
+
+! modprobe usbmon 2> /dev/null && die "Failed to load usbmon."
+
+read
 
 COUNT=0
-while [ "$COUNT" -lt 5 ]
+while [ "$COUNT" -lt 50 ]
 do
   test -c /dev/usbmon0 && break
-  COUNT=$(($COUNT+1))
-  sleep 1
+  COUNT=$((COUNT+1))
+  sleep .1
 done
-test "$COUNT" -eq 5 && echo usbmon0 was not found! && exit -1
+test "$COUNT" -eq 50 && die "usbmon0 was not found."
 
-for PID in `pgrep tcpdump`
+#
+# Kill running tcpdump instances.
+#
+
+for PID in $(pgrep tcpdump)
 do
-  test -n "$(ls -l /proc/$PID/fd | grep $PWD/$CAPTURE)" && kill $PID
+  for FILE in /proc/"$PID"/fd/*
+  do
+    test "$(readlink "$FILE")" == "$CAPTURE" && kill "$PID"
+  done
 done
 
-if [ -f $CAPTURE ]
+#
+# Check capture file presence.
+#
+
+if [ -f "$CAPTURE" ]
 then
-  echo Overwrite $PWD/$CAPTURE? [y/n]
-  read LINE
+  echo Overwrite "$CAPTURE"? [y/n]
+  read -r LINE
   if [ "$LINE" != "y" ]
   then
     echo Aborted. && exit 0
   fi
-  ! rm $CAPTURE 2> /dev/null && echo Failed to remove $CAPTURE! && exit -1
+  ! rm "$CAPTURE" 2> /dev/null && die "Failed to remove $CAPTURE".
 fi
 
-tcpdump -i usbmon0 -w $CAPTURE 2> /dev/null &
+#
+# Start tcpdump.
+#
+
+tcpdump -i usbmon0 -w "$CAPTURE" 2> /dev/null &
 
 PID=$!
 
+#
+# Wait up to 5 seconds for the capture file to be created.
+#
+
 COUNT=0
-while [ "$COUNT" -lt 5 ]
+while [ "$COUNT" -lt 50 ]
 do
-  test -f $PWD/$CAPTURE && break
-  COUNT=$(($COUNT+1))
-  sleep 1
+  test -f "$CAPTURE" && break
+  COUNT=$((COUNT+1))
+  sleep .1
 done
 
-test -z "$(pgrep tcpdump)" && echo Failed to start tcpdump! && exit -1
+#
+# Check that tcpdump is running.
+#
 
-serialusb ${DEVS[$SELECTED]}
+test -d /proc/$PID || die "Failed to start tcpdump."
+
+#
+# Start the proxy.
+#
+
+serialusb "${DEVS[$SELECTED]}"
 
 RESULT=$?
 
+#
+# Stop tcpdump.
+#
+
 kill -SIGINT $PID 2> /dev/null
 
-test "$RESULT" -ne 0 && echo Capture failed! && exit -1
+#
+# Display result.
+#
 
-echo The capture file was saved into $PWD/$CAPTURE.
+test "$RESULT" -ne 0 && die "Capture failed."
+
+echo
+echo The capture file was saved into "$CAPTURE".
 echo It can be opened using wireshark!

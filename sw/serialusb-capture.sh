@@ -74,8 +74,8 @@ serialusb ${DEVS[$SELECTED]}
 RESULT=$?
 
 kill -SIGINT $PID 2> /dev/null
-echo $RESULT
-test "$RESULT" -ne 0 && echo Failed to start the proxy! && exit -1
+
+test "$RESULT" -ne 0 && echo Capture failed! && exit -1
 
 echo The capture file was saved into $PWD/$CAPTURE.
 echo It can be opened using wireshark!

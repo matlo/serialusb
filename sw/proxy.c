@@ -694,6 +694,7 @@ int proxy_start(char * port) {
   usbasync_close(usb);
 
   if (init_timer >= 0) {
+    PRINT_ERROR_OTHER("Failed to start the proxy: initialization timeout expired!")
     gtimer_close(init_timer);
     return -1;
   }

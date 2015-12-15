@@ -13,6 +13,7 @@
 #include <gpoll.h>
 #include <gtimer.h>
 #include <names.h>
+#include <prio.h>
 
 #define ENDPOINT_MAX_NUMBER USB_ENDPOINT_NUMBER_MASK
 
@@ -667,6 +668,13 @@ static int timer_read(int user) {
 
 int proxy_start(char * port) {
 
+  int ret = set_prio();
+  if (ret < 0)
+  {
+    PRINT_ERROR_OTHER("Failed to set process priority!")
+    return -1;
+  }
+
   adapter = adapter_open(port, process_packet, adapter_send_callback, adapter_close_callback);
 
   if(adapter < 0) {
@@ -682,7 +690,7 @@ int proxy_start(char * port) {
     return -1;
   }
 
-  int ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
+  ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
   if (ret < 0) {
     return -1;
   }

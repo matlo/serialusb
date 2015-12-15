@@ -83,7 +83,7 @@ int gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CA
 
   int slot = get_slot();
   if (slot < 0) {
-    PRINT_ERROR_ERRNO("no slot available")
+    PRINT_ERROR_OTHER("no slot available")
     return -1;
   }
 

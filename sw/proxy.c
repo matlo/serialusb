@@ -21,9 +21,13 @@
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
 
-#define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
-#define PRINT_TRANSFER_WRITE_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & USB_ENDPOINT_NUMBER_MASK, msg);
-#define PRINT_TRANSFER_READ_ERROR(endpoint,msg) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, endpoint & USB_ENDPOINT_NUMBER_MASK, msg);
+#define PRINT_ERROR_OTHER(MESSAGE) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, MESSAGE);
+#define PRINT_ERROR_DESCRIPTOR(WINDEX,WVALUE,WLENGTH,AVAILABLE) \
+    fprintf(stderr, "%s:%d %s: unable to add descriptor wIndex=0x%04x wValue=0x%04x wLength=%u (available=%u)\n", __FILE__, __LINE__, __func__, WINDEX, WVALUE, (unsigned int)(WLENGTH), (unsigned int)(AVAILABLE));
+#define PRINT_TRANSFER_WRITE_ERROR(ENDPOINT,MESSAGE) \
+    fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
+#define PRINT_TRANSFER_READ_ERROR(ENDPOINT,MESSAGE) \
+    fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
 
 static int usb = -1;
 static int adapter = -1;
@@ -433,8 +437,6 @@ void fix_endpoints() {
 
 int send_descriptors() {
 
-  unsigned char warn = 0;
-
 #define ADD_DESCRIPTOR(WVALUE,WINDEX,WLENGTH,DATA) \
   if (pDesc + WLENGTH <= desc + MAX_DESCRIPTORS_SIZE && pDescIndex < descIndex + MAX_DESCRIPTORS) { \
     pDescIndex->offset = pDesc - desc; \
@@ -445,7 +447,7 @@ int send_descriptors() {
     pDesc += WLENGTH; \
     ++pDescIndex; \
   } else { \
-    warn = 1; \
+    PRINT_ERROR_DESCRIPTOR(WVALUE, WINDEX, WLENGTH, MAX_DESCRIPTORS_SIZE - (pDesc - desc)) \
   }
 
   ADD_DESCRIPTOR((USB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
@@ -460,10 +462,6 @@ int send_descriptors() {
   for(descNumber = 0; descNumber < descriptors->nbOthers; ++descNumber) {
 
     ADD_DESCRIPTOR(descriptors->others[descNumber].wValue, descriptors->others[descNumber].wIndex, descriptors->others[descNumber].wLength, descriptors->others[descNumber].data)
-  }
-
-  if (warn) {
-    PRINT_ERROR_OTHER("unable to add all descriptors")
   }
 
   int ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc);

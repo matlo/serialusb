@@ -58,7 +58,7 @@ These goals led to the following decisions:
 * Only 254 bytes can be tranfered in the data stage of non-standard control tranfers.
 * This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
 * Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb does a few changes to the USB descriptors used at the enumeration step.
-* For now the UART speed is 500kbps, which is not enough to reach the theorical max baudrate of 64kB/s.
+* For now the UART speed is 500kbps, which means the theorical max throughput is 50kB/s. This is not enough to reach 64kB/s.
 * When using a Raspberry Pi as the proxy host, expect issues with devices using interrupt OUT endpoints.
 
 # Licence

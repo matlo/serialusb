@@ -48,6 +48,10 @@ These goals led to the following decisions:
 * a CP2102- or FT232RL-based USB to UART adapter with 5V tolerance
    * the FT232RL is better as its max baudrate is 3Mbps (vs 921600bps)
 
+<img src="http://gimx.fr/img/serialusb/serialusb-cp2102-wiring-s.png" alt="cp2102" width="275" />
+<img src="http://gimx.fr/img/serialusb/serialusb-side-s.png" alt="side" width="275" />
+<img src="http://gimx.fr/img/serialusb/serialusb-atmega32u4-wiring-s.png" alt="atmega32u4" width="275" />
+
 # Notable components
 
 * The atmega32u4 firmware is based on [LUFA](https://github.com/abcminiuser/lufa) which is a great USB stack for AVRs.

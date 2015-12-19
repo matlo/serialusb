@@ -22,12 +22,8 @@
 #define KGRN  "\x1B[32m"
 
 #define PRINT_ERROR_OTHER(MESSAGE) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, MESSAGE);
-#define PRINT_ERROR_DESCRIPTOR(WINDEX,WVALUE,WLENGTH,AVAILABLE) \
-    fprintf(stderr, "%s:%d %s: unable to add descriptor wIndex=0x%04x wValue=0x%04x wLength=%u (available=%u)\n", __FILE__, __LINE__, __func__, WINDEX, WVALUE, (unsigned int)(WLENGTH), (unsigned int)(AVAILABLE));
-#define PRINT_TRANSFER_WRITE_ERROR(ENDPOINT,MESSAGE) \
-    fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
-#define PRINT_TRANSFER_READ_ERROR(ENDPOINT,MESSAGE) \
-    fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
+#define PRINT_TRANSFER_WRITE_ERROR(ENDPOINT,MESSAGE) fprintf(stderr, "%s:%d %s: write transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
+#define PRINT_TRANSFER_READ_ERROR(ENDPOINT,MESSAGE) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
 
 static int usb = -1;
 static int adapter = -1;
@@ -435,36 +431,57 @@ void fix_endpoints() {
   }
 }
 
-int send_descriptors() {
+static int add_descriptor(uint16_t wValue, uint16_t wIndex, uint16_t wLength, void * data) {
 
-#define ADD_DESCRIPTOR(WVALUE,WINDEX,WLENGTH,DATA) \
-  if (pDesc + WLENGTH <= desc + MAX_DESCRIPTORS_SIZE && pDescIndex < descIndex + MAX_DESCRIPTORS) { \
-    pDescIndex->offset = pDesc - desc; \
-    pDescIndex->wValue = WVALUE; \
-    pDescIndex->wIndex = WINDEX; \
-    pDescIndex->wLength = WLENGTH; \
-    memcpy(pDesc, DATA, WLENGTH); \
-    pDesc += WLENGTH; \
-    ++pDescIndex; \
-  } else { \
-    PRINT_ERROR_DESCRIPTOR(WVALUE, WINDEX, WLENGTH, MAX_DESCRIPTORS_SIZE - (pDesc - desc)) \
+  if (pDesc + wLength > desc + MAX_DESCRIPTORS_SIZE || pDescIndex >= descIndex + MAX_DESCRIPTORS) {
+    fprintf(stderr, "%s:%d %s: unable to add descriptor wValue=0x%04x wIndex=0x%04x wLength=%u (available=%u)\n",
+        __FILE__, __LINE__, __func__, wValue, wIndex, wLength, (unsigned int)(MAX_DESCRIPTORS_SIZE - (pDesc - desc)));
+    return -1;
   }
 
-  ADD_DESCRIPTOR((USB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device)
-  ADD_DESCRIPTOR((USB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0)
+  pDescIndex->offset = pDesc - desc;
+  pDescIndex->wValue = wValue;
+  pDescIndex->wIndex = wIndex;
+  pDescIndex->wLength = wLength;
+  memcpy(pDesc, data, wLength);
+  pDesc += wLength;
+  ++pDescIndex;
+
+  return 0;
+}
+
+int send_descriptors() {
+
+  int ret;
+
+  ret = add_descriptor((USB_DT_DEVICE << 8), 0, sizeof(descriptors->device), &descriptors->device);
+  if (ret < 0) {
+    return -1;
+  }
+
+  ret = add_descriptor((USB_DT_STRING << 8), 0, sizeof(descriptors->langId0), &descriptors->langId0);
+  if (ret < 0) {
+    return -1;
+  }
 
   unsigned int descNumber;
   for(descNumber = 0; descNumber < descriptors->device.bNumConfigurations; ++descNumber) {
 
-    ADD_DESCRIPTOR((USB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw)
+    ret = add_descriptor((USB_DT_CONFIG << 8) | descNumber, 0, descriptors->configurations[descNumber].descriptor->wTotalLength, descriptors->configurations[descNumber].raw);
+    if (ret < 0) {
+      return -1;
+    }
   }
 
   for(descNumber = 0; descNumber < descriptors->nbOthers; ++descNumber) {
 
-    ADD_DESCRIPTOR(descriptors->others[descNumber].wValue, descriptors->others[descNumber].wIndex, descriptors->others[descNumber].wLength, descriptors->others[descNumber].data)
+    ret = add_descriptor(descriptors->others[descNumber].wValue, descriptors->others[descNumber].wIndex, descriptors->others[descNumber].wLength, descriptors->others[descNumber].data);
+    if (ret < 0) {
+      return -1;
+    }
   }
 
-  int ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc);
+  ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc);
   if (ret < 0) {
     return -1;
   }

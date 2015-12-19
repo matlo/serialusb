@@ -55,9 +55,9 @@ These goals led to the following decisions:
 # Limitations
 
 * Only control and interrupt endpoints are currently supported.
-* The size of any control transfer (setup + data) should not exceed 254 bytes.<br />
+* The size of any control transfer (setup + data) should not exceed 254 bytes.  
 This limitation does not apply to the standard descriptors, see below.
-* All standard descriptors should fit into 1kB, which is the size of the RAM buffer used to store them into the atmega32u4.<br />
+* All standard descriptors should fit into 1kB, which is the size of the RAM buffer used to store them into the atmega32u4.  
 This limitation applies to the following standard descriptors:
    * device descriptor
    * configuration descriptors

@@ -65,7 +65,11 @@ This limitation applies to the following standard descriptors:
    * strings referenced in the device and configuration descriptors
    * HID report descriptors
 * This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
-* Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb may change the USB descriptors used at the enumeration step.
+* The USB interface of the atmega32u4 has the following constraints for non-control endpoints:
+   * the number of endpoints is limited to 6
+   * the address can be from 1 to 6
+   * they can't be bidirectional
+Due to these contraints, serialusb may change the USB descriptors used at the enumeration step.
 * For now the UART speed is 500kbps, which means the theorical max throughput is 50kB/s. This is not enough to reach 64kB/s.
 * When using a Raspberry Pi as the proxy host, expect issues with devices using interrupt OUT endpoints.
 

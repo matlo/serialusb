@@ -56,10 +56,16 @@ These goals led to the following decisions:
 
 * Only control and interrupt endpoints are currently supported.
 * The size of any control transfer (setup + data) should not exceed 254 bytes.<br />
-Standard descriptors such as device, configuration, string and HID report descriptors are loaded on the atmega32u4 into a 1kB RAM buffer.<br />
-The 254-byte limitation does not apply to all standard descriptors that fit into the 1kB RAM buffer.
+This limitation does not apply to the standard descriptors, see below.
+* All standard descriptors should fit into 1kB, which is the size of the RAM buffer used to store them into the atmega32u4.<br />
+This limitation applies to the following standard descriptors:
+   * device descriptor
+   * configuration descriptors
+   * langId0 descriptor
+   * strings referenced in the device and configuration descriptors
+   * HID report descriptors
 * This is a software proxy, not a hardware one: it's usefull for reverse-engineering protocols, not for investigating hardware issues.
-* Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb does a few changes to the USB descriptors used at the enumeration step.
+* Because the USB interface of the atmega32u4 has some constraints, such as a limited number of endpoints, serialusb may change the USB descriptors used at the enumeration step.
 * For now the UART speed is 500kbps, which means the theorical max throughput is 50kB/s. This is not enough to reach 64kB/s.
 * When using a Raspberry Pi as the proxy host, expect issues with devices using interrupt OUT endpoints.
 

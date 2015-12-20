@@ -61,7 +61,7 @@ rm -rf $PACKAGE*
 git clone -b $BRANCH --single-branch --depth 1 https://github.com/matlo/serialusb.git
 
 mv serialusb/sw $PACKAGE-$NEW_VERSION
-mv serialusb/include/protocol.h $PACKAGE-$NEW_VERSION/include
+mv serialusb/include/*.h $PACKAGE-$NEW_VERSION/include
 rm -rf serialusb
 
 cp -r debian $PACKAGE-$NEW_VERSION
@@ -87,8 +87,8 @@ then
     exit
   fi
   
-  sed -i "s/#define[ ]*INFO_VERSION[ ]*\"[0-9]*.[0-9]*\"/#define INFO_VERSION \"$MAJOR.$MINOR\"/" info.h
-  sed -i "s/#define[ ]*INFO_YEAR[ ]*\"2010-[0-9]*\"/#define INFO_YEAR \"2010-$(date '+%Y')\"/" info.h
+  sed -i "s/#define[ ]*INFO_VERSION[ ]*\"[0-9]*.[0-9]*\"/#define INFO_VERSION \"$MAJOR.$MINOR\"/" include/info.h
+  sed -i "s/#define[ ]*INFO_YEAR[ ]*\"2010-[0-9]*\"/#define INFO_YEAR \"2010-$(date '+%Y')\"/" include/info.h
 fi
 
 debuild --no-tgz-check -us -uc

@@ -111,7 +111,7 @@ test -d /proc/$PID || die "Failed to start tcpdump."
 # Start the proxy.
 #
 
-serialusb "${DEVS[$SELECTED]}"
+serialusb -p "${DEVS[$SELECTED]}"
 
 RESULT=$?
 

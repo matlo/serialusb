@@ -25,8 +25,9 @@ int args_read(int argc, char *argv[]) {
 
   struct option long_options[] = {
     /* These options don't set a flag. We distinguish them by their indices. */
-    { "version", no_argument, 0, 'v' },
-    { "port", required_argument, 0, 'p' },
+    { "help",    no_argument,       0, 'h' },
+    { "version", no_argument,       0, 'v' },
+    { "port",    required_argument, 0, 'p' },
     { 0, 0, 0, 0 }
   };
 
@@ -34,13 +35,18 @@ int args_read(int argc, char *argv[]) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "p:v", long_options, &option_index);
+    c = getopt_long(argc, argv, "hp:v", long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1)
       break;
 
     switch (c) {
+
+    case 'h':
+      usage();
+      exit(0);
+      break;
 
     case 'p':
       port = optarg;

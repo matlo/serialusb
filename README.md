@@ -1,6 +1,6 @@
 # What?
 
-serialusb is a cheap (~5$) USB proxy intended to be used with input devices.
+serialusb is a cheap (~$5) USB proxy intended to be used with input devices.
 
 Input devices generally use interrupt IN and OUT endpoints, and operate at low or full speed modes.  
 The maximum throughput is 64 kB/s = 512kbps in each direction (1000Hz, 64-byte packets).  
@@ -21,7 +21,7 @@ I'm the developper of the [GIMX](https://github.com/matlo/GIMX/) project, which 
 
 serialusb attempts to meet the following goals:
 
-1. low cost (< 10$)
+1. low cost (< $10)
 2. low latency and low CPU footprint
 3. low disturbance on transfered data
 4. reusability:
@@ -44,8 +44,8 @@ These goals led to the following decisions:
 # Hardware requirements
 
 * a computer with 2 USB host ports
-* an atmega32u4 board running at 5V
-* a CP2102- or FT232RL-based USB to UART adapter with 5V tolerance
+* an atmega32u4 board running at 5V (~$4 on ebay)
+* a CP2102- or FT232RL-based USB to UART adapter with 5V tolerance (~$1 on ebay)
    * the FT232RL is better as its max baudrate is 3Mbps (vs 921600bps)
 
 <img src="http://gimx.fr/img/serialusb/serialusb-cp2102-wiring-s.png" alt="cp2102" width="275" />

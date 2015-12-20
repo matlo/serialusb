@@ -54,6 +54,17 @@ These goals led to the following decisions:
 
 Note: the CP2102 adapter shown above is mislabeled (RXD and TXD are inverted).
 
+#Instructions
+
+* Assemble the atmega32u4 board and the USB to UART adapter as explained on the [GIMX DIY USB adapter wiki page](http://gimx.fr/wiki/index.php?title=DIY_USB_adapter).  
+   Use the latest emu-X.Y.hex firmware from the [release page](https://github.com/matlo/serialusb/releases).  
+* Connect the USB to UART adapter to the PC, and the atmega32u4 board to the target host.  
+* Connect the target device to the PC.  
+* Either install serialusb from the sources, or install the [package](https://github.com/matlo/serialusb/releases) I built for Linux Mint 17.3 64-bit.  
+   The prebuilt packages should work with any Ubuntu 14.04 64-bit derivate.  
+* Once installed, run the helper script: sudo serialusb-capture.sh  
+* Select the USB to UART adapter, and the target device.  
+
 # Notable components
 
 * The atmega32u4 firmware is based on [LUFA](https://github.com/abcminiuser/lufa) which is a great USB stack for AVRs.

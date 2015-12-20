@@ -77,7 +77,7 @@ This limitation applies to the following standard descriptors:
    * the address can be from 1 to 6
    * they can't be bidirectional
 
-   Due to these contraints, serialusb may change the USB descriptors used at the enumeration step.
+   Due to these contraints, serialusb may change the endpoint addresses in the configuration descriptors.
 * For now the UART speed is 500kbps, which means the theorical max throughput is 50kB/s. This is not enough to reach 64kB/s.
 * When using a Raspberry Pi as the proxy host, expect issues with devices using interrupt OUT endpoints.
 

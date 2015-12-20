@@ -57,6 +57,7 @@ Note: the CP2102 adapter shown above is mislabeled (RXD and TXD are inverted).
 # Notable components
 
 * The atmega32u4 firmware is based on [LUFA](https://github.com/abcminiuser/lufa) which is a great USB stack for AVRs.
+* The PC software uses [libusb](http://libusb.info/), which is a great library for controlling USB devices.
 
 # Limitations
 

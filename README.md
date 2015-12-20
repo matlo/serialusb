@@ -52,6 +52,8 @@ These goals led to the following decisions:
 <img src="http://gimx.fr/img/serialusb/serialusb-side-s.png" alt="side" width="275" />
 <img src="http://gimx.fr/img/serialusb/serialusb-atmega32u4-wiring-s.png" alt="atmega32u4" width="275" />
 
+Note: the CP2102 adapter shown above is mislabeled (RXD and TXD are inverted).
+
 # Notable components
 
 * The atmega32u4 firmware is based on [LUFA](https://github.com/abcminiuser/lufa) which is a great USB stack for AVRs.

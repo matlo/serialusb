@@ -99,5 +99,5 @@ This limitation applies to the following standard descriptors:
 # Related projects
 
 * [GIMX](https://github.com/matlo/GIMX/)
-* [USBSniffer](https://github.com/matlo/bb_usb_sniffer): kernel module, runs on the beagleboard-xm (~150$)
-* [USBProxy](https://github.com/dominicgs/USBProxy): userland software, runs on the beaglebone black (~50$)
+* [USBSniffer](https://github.com/matlo/bb_usb_sniffer): kernel module, runs on the beagleboard-xm (~$150)
+* [USBProxy](https://github.com/dominicgs/USBProxy): userland software, runs on the beaglebone black (~$50)

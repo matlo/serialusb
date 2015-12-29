@@ -56,7 +56,7 @@ int gpoll_register_fd(int fd, int user, GPOLL_READ_CALLBACK fp_read, GPOLL_WRITE
 
 void gpoll_remove_fd(int fd) {
 
-  if (fd < MAX_SOURCES) {
+  if (fd >= 0 && fd < MAX_SOURCES) {
     memset(sources + fd, 0x00, sizeof(*sources));
   }
 }

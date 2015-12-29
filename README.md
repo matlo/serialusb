@@ -73,6 +73,7 @@ Note: the CP2102 adapter shown above is mislabeled (RXD and TXD are inverted).
 # Limitations
 
 * Only control and interrupt endpoints are currently supported.
+* Multiple configurations are not supported. Only the first configuration can be used.
 * The size of any control transfer (setup + data) should not exceed 254 bytes.  
 This limitation does not apply to the standard descriptors, see below.
 * All standard descriptors should fit into 1kB, which is the size of the RAM buffer used to store them into the atmega32u4.  

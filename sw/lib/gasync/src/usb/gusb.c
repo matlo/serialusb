@@ -1,9 +1,9 @@
 /*
- Copyright (c) 2015 Mathieu Laurendeau <mat.lau@laposte.net>
+ Copyright (c) 2016 Mathieu Laurendeau <mat.lau@laposte.net>
  License: GPLv3
  */
 
-#include <usbasync.h>
+#include <gusb.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -13,9 +13,9 @@
 
 #define USBASYNC_MAX_DEVICES 256
 
-#define USBASYNC_OUT_TIMEOUT 20 // ms
+#define USBASYNC_OUT_TIMEOUT 20 // milliseconds
 
-#define USBASYNC_DEFAULT_TIMEOUT 1000 // ms
+#define USBASYNC_DEFAULT_TIMEOUT 1000 // milliseconds
 
 #define IS_ENDPOINT_IN(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
 #define IS_ENDPOINT_OUT(endpoint) ((endpoint & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_OUT)
@@ -131,7 +131,7 @@ void usbasync_clean(void) {
   int i;
   for (i = 0; i < USBASYNC_MAX_DEVICES; ++i) {
     if (usbdevices[i].devh != NULL) {
-      usbasync_close(i);
+      gusb_close(i);
     }
   }
   libusb_exit(ctx);
@@ -310,7 +310,7 @@ static void usb_callback(struct libusb_transfer* transfer) {
   remove_transfer(transfer);
 }
 
-int usbasync_poll(int device, unsigned char endpoint) {
+int gusb_poll(int device, unsigned char endpoint) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
@@ -391,7 +391,7 @@ static int transfer_timeout(int device, unsigned char endpointIndex, unsigned ch
   switch (type) {
   case LIBUSB_TRANSFER_TYPE_INTERRUPT:
     ret = libusb_interrupt_transfer(usbdevices[device].devh, endpointAddress,
-      (void *) buf, count, &transfered, timeout * USBASYNC_DEFAULT_TIMEOUT);
+      (void *) buf, count, &transfered, timeout);
     if (ret != LIBUSB_SUCCESS && ret != LIBUSB_ERROR_TIMEOUT) {
 
       PRINT_ERROR_LIBUSB("libusb_interrupt_transfer", ret)
@@ -406,7 +406,7 @@ static int transfer_timeout(int device, unsigned char endpointIndex, unsigned ch
   return transfered;
 }
 
-int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout) {
+int gusb_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count, unsigned int timeout) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
@@ -419,7 +419,7 @@ int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf,
   return transfer_timeout(device, endpointIndex, LIBUSB_ENDPOINT_OUT, buf, count, timeout);
 }
 
-int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout) {
+int gusb_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
@@ -925,7 +925,7 @@ static int claim_device(int device, libusb_device * dev, struct libusb_device_de
   return 0;
 }
 
-s_usb_dev * usbasync_enumerate(unsigned short vendor, unsigned short product) {
+s_usb_dev * gusb_enumerate(unsigned short vendor, unsigned short product) {
 
   s_usb_dev * usb_devs = NULL;
   unsigned int nb_usb_devs = 0;
@@ -1000,7 +1000,7 @@ s_usb_dev * usbasync_enumerate(unsigned short vendor, unsigned short product) {
   return usb_devs;
 }
 
-void usbasync_free_enumeration(s_usb_dev * usb_devs) {
+void gusb_free_enumeration(s_usb_dev * usb_devs) {
 
   s_usb_dev * current;
   for (current = usb_devs; current != NULL; ++current) {
@@ -1014,7 +1014,7 @@ void usbasync_free_enumeration(s_usb_dev * usb_devs) {
   free(usb_devs);
 }
 
-int usbasync_open_ids(unsigned short vendor, unsigned short product) {
+int gusb_open_ids(unsigned short vendor, unsigned short product) {
 
   int ret = -1;
 
@@ -1053,7 +1053,7 @@ int usbasync_open_ids(unsigned short vendor, unsigned short product) {
           libusb_free_device_list(devs, 1);
           return device;
         } else {
-          usbasync_close(device);
+          gusb_close(device);
         }
       }
     }
@@ -1064,7 +1064,7 @@ int usbasync_open_ids(unsigned short vendor, unsigned short product) {
   return -1;
 }
 
-int usbasync_open_path(const char * path) {
+int gusb_open_path(const char * path) {
 
   int ret = -1;
 
@@ -1106,7 +1106,7 @@ int usbasync_open_path(const char * path) {
         libusb_free_device_list(devs, 1);
         return device;
       } else {
-        usbasync_close(device);
+        gusb_close(device);
       }
     }
   }
@@ -1116,7 +1116,7 @@ int usbasync_open_path(const char * path) {
   return -1;
 }
 
-s_usb_descriptors * usbasync_get_usb_descriptors(int device) {
+s_usb_descriptors * gusb_get_usb_descriptors(int device) {
 
   USBASYNC_CHECK_DEVICE(device, NULL)
 
@@ -1130,25 +1130,29 @@ static int close_callback(int device) {
   return usbdevices[device].callback.fp_close(usbdevices[device].callback.user);
 }
 
-int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
+int gusb_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
     USBASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 
+  int ret = 0;
+
   const struct libusb_pollfd** pfd_usb = libusb_get_pollfds(ctx);
   int poll_i;
-  for (poll_i = 0; pfd_usb[poll_i] != NULL; ++poll_i) {
+  for (poll_i = 0; pfd_usb[poll_i] != NULL && ret != -1; ++poll_i) {
 
-    fp_register(pfd_usb[poll_i]->fd, device, handle_events, handle_events, close_callback);
+    ret = fp_register(pfd_usb[poll_i]->fd, device, handle_events, handle_events, close_callback);
   }
   free(pfd_usb);
 
-  usbdevices[device].callback.user = user;
-  usbdevices[device].callback.fp_read = fp_read;
-  usbdevices[device].callback.fp_write = fp_write;
-  usbdevices[device].callback.fp_close = fp_close;
+  if (ret != -1) {
+    usbdevices[device].callback.user = user;
+    usbdevices[device].callback.fp_read = fp_read;
+    usbdevices[device].callback.fp_write = fp_write;
+    usbdevices[device].callback.fp_close = fp_close;
+  }
 
-  return 0;
+  return ret;
 }
 
 /*
@@ -1173,7 +1177,7 @@ static void cancel_transfers(int device) {
   }
 }
 
-int usbasync_close(int device) {
+int gusb_close(int device) {
 
   if (device < 0 || device >= USBASYNC_MAX_DEVICES) {
     PRINT_ERROR_OTHER("invalid device");
@@ -1226,7 +1230,7 @@ int usbasync_close(int device) {
   return 1;
 }
 
-int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count) {
+int gusb_write(int device, unsigned char endpoint, const void * buf, unsigned int count) {
 
   USBASYNC_CHECK_DEVICE(device, -1)
 

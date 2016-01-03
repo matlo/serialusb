@@ -3,8 +3,8 @@
  License: GPLv3
  */
 
-#include <usbasync.h>
-#include <serialasync.h>
+#include <gusb.h>
+#include <gserial.h>
 #include <protocol.h>
 #include <adapter.h>
 #include <stdio.h>
@@ -240,7 +240,7 @@ static char * usb_select() {
 
   char * path = NULL;
 
-  s_usb_dev * usb_devs = usbasync_enumerate(0x0000, 0x0000);
+  s_usb_dev * usb_devs = gusb_enumerate(0x0000, 0x0000);
   if (usb_devs == NULL) {
     fprintf(stderr, "No USB device detected!\n");
     return NULL;
@@ -272,7 +272,7 @@ static char * usb_select() {
     fprintf(stderr, "Invalid choice.\n");
   }
 
-  usbasync_free_enumeration(usb_devs);
+  gusb_free_enumeration(usb_devs);
 
   return path;
 }
@@ -518,7 +518,7 @@ static int poll_all_endpoints() {
   for (i = 0; i < sizeof(*serialToUsbEndpoint) / sizeof(**serialToUsbEndpoint) && ret >= 0; ++i) {
     uint8_t endpoint = S2U_ENDPOINT(USB_DIR_IN | i);
     if (endpoint) {
-      ret = usbasync_poll(usb, endpoint);
+      ret = gusb_poll(usb, endpoint);
     }
   }
   return ret;
@@ -528,7 +528,7 @@ static int send_out_packet(s_packet * packet) {
 
   s_endpointPacket * epPacket = (s_endpointPacket *)packet->value;
 
-  return usbasync_write(usb, S2U_ENDPOINT(epPacket->endpoint), epPacket->data, packet->header.length - 1);
+  return gusb_write(usb, S2U_ENDPOINT(epPacket->endpoint), epPacket->data, packet->header.length - 1);
 }
 
 static int send_control_packet(s_packet * packet) {
@@ -540,7 +540,7 @@ static int send_control_packet(s_packet * packet) {
     }
   }
 
-  return usbasync_write(usb, 0, packet->value, packet->header.length);
+  return gusb_write(usb, 0, packet->value, packet->header.length);
 }
 
 static void dump(unsigned char * data, unsigned char length)
@@ -576,7 +576,7 @@ static int process_packet(int user, s_packet * packet)
     break;
   case E_TYPE_IN:
     if (inPending > 0) {
-      ret = usbasync_poll(usb, inPending);
+      ret = gusb_poll(usb, inPending);
       inPending = 0;
       if (ret != -1) {
         ret = send_next_in_packet();
@@ -626,14 +626,14 @@ int proxy_init(char * port) {
     return -1;
   }
 
-  usb = usbasync_open_path(path);
+  usb = gusb_open_path(path);
 
   if (usb < 0) {
     free(path);
     return -1;
   }
 
-  descriptors = usbasync_get_usb_descriptors(usb);
+  descriptors = gusb_get_usb_descriptors(usb);
   if (descriptors == NULL) {
     free(path);
     return -1;
@@ -705,7 +705,7 @@ int proxy_start(char * port) {
     return -1;
   }
 
-  ret = usbasync_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
+  ret = gusb_register(usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
   if (ret < 0) {
     return -1;
   }
@@ -721,7 +721,7 @@ int proxy_start(char * port) {
 
   gtimer_close(timer);
   adapter_send(adapter, E_TYPE_RESET, NULL, 0);
-  usbasync_close(usb);
+  gusb_close(usb);
 
   if (init_timer >= 0) {
     PRINT_ERROR_OTHER("Failed to start the proxy: initialization timeout expired!")

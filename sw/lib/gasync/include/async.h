@@ -1,12 +1,13 @@
 /*
- Copyright (c) 2015 Mathieu Laurendeau <mat.lau@laposte.net>
+ Copyright (c) 2016 Mathieu Laurendeau <mat.lau@laposte.net>
  License: GPLv3
  */
 
 #ifndef ASYNC_H_
+
 #define ASYNC_H_
 
-#include <gpoll.h>
+#include "gpoll.h"
 
 #include <stdio.h>
 
@@ -18,9 +19,14 @@
 #define ASYNC_MAX_DEVICES 256
 #define ASYNC_MAX_WRITE_QUEUE_SIZE 2
 
-typedef int (* ASYNC_READ_CALLBACK)(int user, const void * buf, unsigned int count);
-typedef int (* ASYNC_WRITE_CALLBACK)(int user, int transfered);
+typedef int (* ASYNC_READ_CALLBACK)(int user, const void * buf, int status);
+typedef int (* ASYNC_WRITE_CALLBACK)(int user, int status);
 typedef int (* ASYNC_CLOSE_CALLBACK)(int user);
+#ifndef WIN32
+typedef GPOLL_REGISTER_FD ASYNC_REGISTER_SOURCE;
+#else
+typedef GPOLL_REGISTER_HANDLE ASYNC_REGISTER_SOURCE;
+#endif
 
 typedef struct {
     unsigned short vendor_id;
@@ -117,7 +123,7 @@ int async_close(int device);
 int async_read_timeout(int device, void * buf, unsigned int count, unsigned int timeout);
 int async_write_timeout(int device, const void * buf, unsigned int count, unsigned int timeout);
 int async_set_read_size(int device, unsigned int size);
-int async_register(int device, int user, ASYNC_READ_CALLBACK fp_read, ASYNC_WRITE_CALLBACK fp_write, ASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register);
+int async_register(int device, int user, ASYNC_READ_CALLBACK fp_read, ASYNC_WRITE_CALLBACK fp_write, ASYNC_CLOSE_CALLBACK fp_close, ASYNC_REGISTER_SOURCE fp_register);
 int async_write(int device, const void * buf, unsigned int count);
 int async_set_overlapped(int device);
 

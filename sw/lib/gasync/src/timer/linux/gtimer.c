@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2015 Mathieu Laurendeau <mat.lau@laposte.net>
+ Copyright (c) 2016 Mathieu Laurendeau <mat.lau@laposte.net>
  License: GPLv3
  */
 
@@ -116,11 +116,11 @@ int gtimer_start(int user, int usec, GPOLL_READ_CALLBACK fp_read, GPOLL_CLOSE_CA
 
 int gtimer_close(int timer) {
 
-  if (timers[timer].fd >= 0) {
-    gpoll_remove_fd(timers[timer].fd);
-    close(timers[timer].fd);
-    memset(timers + timer, 0x00, sizeof(*timers));
-  }
+  CHECK_TIMER(timer, -1)
+
+  gpoll_remove_fd(timers[timer].fd);
+  close(timers[timer].fd);
+  memset(timers + timer, 0x00, sizeof(*timers));
 
   return 1;
 }

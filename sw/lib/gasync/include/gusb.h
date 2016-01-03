@@ -1,15 +1,14 @@
 /*
- Copyright (c) 2015 Mathieu Laurendeau <mat.lau@laposte.net>
+ Copyright (c) 2016 Mathieu Laurendeau <mat.lau@laposte.net>
  License: GPLv3
  */
 
-#ifndef USBASYNC_H_
-#define USBASYNC_H_
-
-#include <gpoll.h>
+#ifndef GUSB_H_
+#define GUSB_H_
 
 #include <libusb-1.0/libusb.h>
 #include <linux/usb/ch9.h>
+#include "gpoll.h"
 
 #ifdef WIN32
 #define PACKED __attribute__((gcc_struct, packed))
@@ -79,18 +78,18 @@ typedef struct {
     int next;
 } s_usb_dev;
 
-int usbasync_open_ids(unsigned short vendor, unsigned short product);
-s_usb_dev * usbasync_enumerate(unsigned short vendor, unsigned short product);
-void usbasync_free_enumeration(s_usb_dev * usb_devs);
-int usbasync_open_path(const char * path);
-s_usb_descriptors * usbasync_get_usb_descriptors(int device);
-int usbasync_close(int device);
-int usbasync_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout);
-int usbasync_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
+int gusb_open_ids(unsigned short vendor, unsigned short product);
+s_usb_dev * gusb_enumerate(unsigned short vendor, unsigned short product);
+void gusb_free_enumeration(s_usb_dev * usb_devs);
+int gusb_open_path(const char * path);
+s_usb_descriptors * gusb_get_usb_descriptors(int device);
+int gusb_close(int device);
+int gusb_read_timeout(int device, unsigned char endpoint, void * buf, unsigned int count, unsigned int timeout);
+int gusb_register(int device, int user, USBASYNC_READ_CALLBACK fp_read, USBASYNC_WRITE_CALLBACK fp_write,
     USBASYNC_CLOSE_CALLBACK fp_close, GPOLL_REGISTER_FD fp_register);
-int usbasync_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
-int usbasync_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count,
+int gusb_write(int device, unsigned char endpoint, const void * buf, unsigned int count);
+int gusb_write_timeout(int device, unsigned char endpoint, const void * buf, unsigned int count,
     unsigned int timeout);
-int usbasync_poll(int device, unsigned char endpoint);
+int gusb_poll(int device, unsigned char endpoint);
 
-#endif /* USBASYNC_H_ */
+#endif /* GUSB_H_ */

@@ -14,6 +14,7 @@
 #include <gtimer.h>
 #include <names.h>
 #include <prio.h>
+#include <sys/time.h>
 
 #define ENDPOINT_MAX_NUMBER USB_ENDPOINT_NUMBER_MASK
 
@@ -320,18 +321,18 @@ void get_endpoint_properties(unsigned char configurationIndex, uint8_t epProps[E
         struct usb_endpoint_descriptor * endpoint =
             descriptors->configurations[configurationIndex].interfaces[interfaceIndex].altInterfaces[altInterfaceIndex].endpoints[endpointIndex];
         uint8_t epIndex = ENDPOINT_ADDR_TO_INDEX(endpoint->bEndpointAddress);
-        switch (endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) {
-        case LIBUSB_TRANSFER_TYPE_INTERRUPT:
+        switch (endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) {
+        case USB_ENDPOINT_XFER_INT:
           epProps[epIndex] |= EP_PROP_INT;
           break;
-        case LIBUSB_TRANSFER_TYPE_BULK:
+        case USB_ENDPOINT_XFER_BULK:
           epProps[epIndex] |= EP_PROP_BLK;
           break;
-        case LIBUSB_TRANSFER_TYPE_ISOCHRONOUS:
+        case USB_ENDPOINT_XFER_ISOC:
           epProps[epIndex] |= EP_PROP_ISO;
           break;
         }
-        if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN) {
+        if ((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN) {
           epProps[epIndex] |= EP_PROP_IN;
         } else {
           epProps[epIndex] |= EP_PROP_OUT;

@@ -23,7 +23,7 @@ DEVICES="$(ls /dev/ttyUSB* 2> /dev/null)"
 
 test -z "$DEVICES" && die "No USB to UART adapter detected!"
 
-echo Select a USB to UART adapter:
+echo Available USB to UART adapters:
 
 INDEX=0
 for DEV in $DEVICES
@@ -32,6 +32,8 @@ do
   DEVS[$INDEX]="$DEV"
   INDEX=$((INDEX+1))
 done
+
+echo -n "Select the USB to UART adapter number: "
 
 read -r SELECTED
 
@@ -72,7 +74,7 @@ done
 
 if [ -f "$CAPTURE" ]
 then
-  echo Overwrite "$CAPTURE"? [y/n]
+  echo -n "Overwrite $CAPTURE? [y/n] "
   read -r LINE
   if [ "$LINE" != "y" ]
   then

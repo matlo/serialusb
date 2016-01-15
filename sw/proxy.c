@@ -148,7 +148,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
     }
 
     int ret;
-    if (status > 0) {
+    if (status >= 0) {
       ret = adapter_send(adapter, E_TYPE_CONTROL, buf, status);
     } else {
       ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
@@ -164,7 +164,7 @@ int usb_read_callback(int user, unsigned char endpoint, const void * buf, int st
       return -1;
     }
 
-    if (status > 0) {
+    if (status >= 0) {
 
       int ret = queue_in_packet(endpoint, buf, status);
       if (ret < 0) {

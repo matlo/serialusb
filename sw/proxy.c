@@ -659,11 +659,6 @@ int proxy_init(char * port) {
     return -1;
   }
 
-  if (descriptors->configurations[0].interfaces[0].altInterfaces[0].bNumEndpoints == 0) {
-    PRINT_ERROR_OTHER("missing endpoint")
-    return -1;
-  }
-
   fix_endpoints();
 
   return 0;

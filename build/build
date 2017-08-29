@@ -6,79 +6,84 @@
 #sudo apt-get install gdebi devscripts pbuilder debhelper
 
 PACKAGE="serialusb"
-VERSION=`cat version`
-TARGET_ARCH=`cat architecture`
+VERSION=$1
+OS=$2
+DIST=$3
+ARCH=$4
 DATE=`date -R`
 YEAR=`date +"%Y"`
 BRANCH="master"
 
-echo "Version number? (default: "$VERSION")"
+usage() {
+  echo "usage: ./build <major.minor> <ubuntu, debian, raspbian> <xenial, jessie, stretch> <amd64, i386, armhf>"
+}
 
-read NEW_VERSION
+echo "Version number: "${VERSION}
 
-if [ -z $NEW_VERSION ]
+if [ -z ${VERSION} ]
 then
-  NEW_VERSION=$VERSION
+  echo No version specified.
+  usage
+  exit
 fi
 
-FIXED=`curl -s -L "https://github.com/matlo/serialusb/issues?labels=serialusb+v$NEW_VERSION&state=closed" | grep "        #[0-9][0-9]*" | sed 's/        //g' | sed ':a;N;$!ba;s/\n/ /g'`
+echo "OS: "${OS}
+
+if [ -z ${OS} ]
+then
+  echo No OS specified.
+  usage
+  exit
+fi
+
+echo "Distribution: "${DIST}
+
+if [ -z ${DIST} ]
+then
+  echo No distribution specified.
+  usage
+  exit
+fi
+
+echo "Architecture: "${ARCH}
+
+if [ -z ${ARCH} ]
+then
+  echo No architecture specified.
+  usage
+  exit
+fi
+
+
+FIXED=`curl -s -L "https://github.com/matlo/serialusb/issues?labels=v${VERSION}&state=closed" | grep "        #[0-9][0-9]*" | sed 's/        //g' | sed ':a;N;$!ba;s/\n/ /g'`
 
 echo Fixed: $FIXED
 echo Date: $DATE
 echo Year: $YEAR
 
-echo "Target architecture? (default: "$TARGET_ARCH")"
-
-read NEW_TARGET_ARCH
-
-if [ -z $NEW_TARGET_ARCH ]
-then
-  NEW_TARGET_ARCH=$TARGET_ARCH
-fi
-
-if [ -z $NEW_VERSION ]
-then
-  echo No version specified!
-  exit
-fi
-
-if [ -z $NEW_TARGET_ARCH ]
-then
-  echo No architecture specified!
-  exit
-fi
-
-echo $NEW_VERSION > version
-echo $NEW_TARGET_ARCH > architecture
-
-if [ "$NEW_TARGET_ARCH" != "$TARGET_ARCH" ]
-then
-  sudo pbuilder create --architecture $NEW_TARGET_ARCH
-fi
-
 rm -rf $PACKAGE*
 
 git clone -b $BRANCH --single-branch --depth 1 https://github.com/matlo/serialusb.git
 
-mv serialusb/sw $PACKAGE-$NEW_VERSION
-mv serialusb/include/*.h $PACKAGE-$NEW_VERSION/include
+mv serialusb/sw $PACKAGE-$VERSION
+mv serialusb/include/*.h $PACKAGE-$VERSION/include
 rm -rf serialusb
 
-cp -r debian $PACKAGE-$NEW_VERSION
+cp -r debian $PACKAGE-$VERSION
 
-cd $PACKAGE-$NEW_VERSION
+cd $PACKAGE-$VERSION
 
-sed -i "s/#VERSION#/$NEW_VERSION/" debian/changelog
+sed -i "s/#VERSION#/$VERSION/" debian/changelog
 sed -i "s/#FIXED#/$FIXED/" debian/changelog
 sed -i "s/#DATE#/$DATE/" debian/changelog
 
 sed -i "s/#DATE#/$DATE/" debian/copyright
 sed -i "s/#YEAR#/$YEAR/" debian/copyright
 
-if [ -n $NEW_VERSION ]
+if [ -n $VERSION ]
 then
-  MAJOR=$(echo $NEW_VERSION | awk -F"." '{print $1}')
-  MINOR=$(echo $NEW_VERSION | awk -F"." '{print $2}')
+  MAJOR=$(echo $VERSION | awk -F"." '{print $1}')
+  MINOR=$(echo $VERSION | awk -F"." '{print $2}')
   echo Major release number: $MAJOR
   echo Minor release number: $MINOR
   if [ -z $MAJOR ] || [ -z $MINOR ]
@@ -91,8 +96,7 @@ then
   sed -i "s/#define[ ]*INFO_YEAR[ ]*\"2010-[0-9]*\"/#define INFO_YEAR \"2010-$(date '+%Y')\"/" include/info.h
 fi
 
-debuild --no-tgz-check -us -uc
+OS=${OS} DIST=${DIST} ARCH=${ARCH} pdebuild
 
-sudo pbuilder build ../$PACKAGE\_$NEW_VERSION-1.dsc --architecture $NEW_TARGET_ARCH
+cp /var/cache/pbuilder/${OS}-${DIST}-${ARCH}/result/$PACKAGE\_${VERSION}-1_*.deb ..
 
-cp /var/cache/pbuilder/result/$PACKAGE\_$NEW_VERSION-1_*.deb ..

@@ -72,7 +72,7 @@ int args_read(int argc, char *argv[]) {
   return ret;
 }
 
-static void terminate(int sig) {
+static void terminate(int sig __attribute__((unused))) {
   proxy_stop();
 }
 

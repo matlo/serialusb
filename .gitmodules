@@ -1,0 +1,21 @@
+[submodule "sw/lib/gimxcommon"]
+	path = sw/lib/gimxcommon
+	url = https://github.com/matlo/gimxcommon.git
+[submodule "sw/lib/gimxlog"]
+	path = sw/lib/gimxlog
+	url = https://github.com/matlo/gimxlog.git
+[submodule "sw/lib/gimxpoll"]
+	path = sw/lib/gimxpoll
+	url = https://github.com/matlo/gimxpoll.git
+[submodule "sw/lib/gimxserial"]
+	path = sw/lib/gimxserial
+	url = https://github.com/matlo/gimxserial.git
+[submodule "sw/lib/gimxprio"]
+	path = sw/lib/gimxprio
+	url = https://github.com/matlo/gimxprio.git
+[submodule "sw/lib/gimxtimer"]
+	path = sw/lib/gimxtimer
+	url = https://github.com/matlo/gimxtimer.git
+[submodule "sw/lib/gimxusb"]
+	path = sw/lib/gimxusb
+	url = https://github.com/matlo/gimxusb.git

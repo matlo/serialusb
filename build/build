@@ -63,7 +63,7 @@ echo Year: $YEAR
 
 rm -rf $PACKAGE*
 
-git clone -b $BRANCH --single-branch --depth 1 https://github.com/matlo/serialusb.git
+git clone -b $BRANCH --single-branch --depth 1 --recursive https://github.com/matlo/serialusb.git
 
 mv serialusb/sw $PACKAGE-$VERSION
 mv serialusb/include/*.h $PACKAGE-$VERSION/include

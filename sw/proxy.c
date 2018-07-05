@@ -560,7 +560,7 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
       }
     }
     break;
-  case E_TYPE_OUT:
+  case GA_TYPE_OUT:
     {
       s_endpointPacket * epPacket = (s_endpointPacket *)packet->value;
       ret = source_send_out_transfer(epPacket->endpoint, epPacket->data, packet->header.length - 1);

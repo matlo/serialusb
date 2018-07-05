@@ -92,7 +92,7 @@ static int send_next_in_packet() {
 
   if (nbInEpFifo > 0) {
     uint8_t inPacketIndex = ALLOCATOR_ENDPOINT_ADDR_TO_INDEX(inEpFifo[0]);
-    int ret = adapter_send(adapter, E_TYPE_IN, (const void *)&inPackets[inPacketIndex].packet, inPackets[inPacketIndex].length);
+    int ret = gadapter_send(adapter, GA_TYPE_IN, (const void *)&inPackets[inPacketIndex].packet, inPackets[inPacketIndex].length);
     if(ret < 0) {
       return -1;
     }
@@ -150,11 +150,11 @@ int usb_read_callback(void * user __attribute__((unused)), unsigned char endpoin
           done = 1;
           return -1;
         }
-        ret = adapter_send(adapter, E_TYPE_CONTROL, buf, status);
+        ret = gadapter_send(adapter, GA_TYPE_CONTROL, buf, status);
       }
     } else {
       if (adapter != NULL) {
-        ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+        ret = gadapter_send(adapter, GA_TYPE_CONTROL_STALL, NULL, 0);
       }
     }
     if(ret < 0) {
@@ -208,7 +208,7 @@ int source_write_callback(void * user __attribute__((unused)), unsigned char end
   case E_TRANSFER_STALL:
     if (endpoint == 0) {
       if (adapter != NULL) {
-        int ret = adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+        int ret = gadapter_send(adapter, GA_TYPE_CONTROL_STALL, NULL, 0);
         if (ret < 0) {
           done = 1;
           return -1;
@@ -222,7 +222,7 @@ int source_write_callback(void * user __attribute__((unused)), unsigned char end
   default:
     if (endpoint == 0) {
       if (adapter != NULL) {
-        int ret = adapter_send(adapter, E_TYPE_CONTROL, NULL, 0);
+        int ret = gadapter_send(adapter, GA_TYPE_CONTROL, NULL, 0);
         if (ret < 0) {
           done = 1;
           return -1;
@@ -456,7 +456,7 @@ int send_descriptors() {
     }
   }
 
-  ret = adapter_send(adapter, E_TYPE_DESCRIPTORS, desc, pDesc - desc);
+  ret = gadapter_send(adapter, GA_TYPE_DESCRIPTORS, desc, pDesc - desc);
   if (ret < 0) {
     return -1;
   }
@@ -472,7 +472,7 @@ static int send_index() {
 
   descIndexSent = 1;
 
-  return adapter_send(adapter, E_TYPE_INDEX, (unsigned char *)&descIndex, (pDescIndex - descIndex) * sizeof(*descIndex));
+  return gadapter_send(adapter, GA_TYPE_INDEX, (unsigned char *)&descIndex, (pDescIndex - descIndex) * sizeof(*descIndex));
 }
 
 static int send_endpoints() {
@@ -483,7 +483,7 @@ static int send_endpoints() {
 
   endpointsSent = 1;
 
-  return adapter_send(adapter, E_TYPE_ENDPOINTS, (unsigned char *)&endpoints, (pEndpoints - endpoints) * sizeof(*endpoints));
+  return gadapter_send(adapter, GA_TYPE_ENDPOINTS, (unsigned char *)&endpoints, (pEndpoints - endpoints) * sizeof(*endpoints));
 }
 
 static int source_send_out_transfer(unsigned char endpoint, const void * buf, unsigned int length) {
@@ -539,19 +539,19 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
   int ret = 0;
 
   switch (packet->header.type) {
-  case E_TYPE_DESCRIPTORS:
+  case GA_TYPE_DESCRIPTORS:
     ret = send_index();
     break;
-  case E_TYPE_INDEX:
+  case GA_TYPE_INDEX:
     ret = send_endpoints();
     break;
-  case E_TYPE_ENDPOINTS:
+  case GA_TYPE_ENDPOINTS:
     gtimer_close(init_timer);
     init_timer = NULL;
     printf("Proxy started successfully. Press ctrl+c to stop it.\n");
     ret = source_poll_all_endpoints();
     break;
-  case E_TYPE_IN:
+  case GA_TYPE_IN:
     if (inPending > 0) {
       ret = gusb_poll(usb, inPending);
       inPending = 0;
@@ -566,13 +566,13 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
       ret = source_send_out_transfer(epPacket->endpoint, epPacket->data, packet->header.length - 1);
     }
     break;
-  case E_TYPE_CONTROL:
+  case GA_TYPE_CONTROL:
     {
       struct usb_ctrlrequest * setup = (struct usb_ctrlrequest *)packet->value;
       ret = source_send_control_transfer(setup, packet->header.length);
     }
     break;
-  case E_TYPE_DEBUG:
+  case GA_TYPE_DEBUG:
     {
       struct timeval tv;
       gettimeofday(&tv, NULL);
@@ -580,7 +580,7 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
       dump(packet->value, packet->header.length);
     }
     break;
-  case E_TYPE_RESET:
+  case GA_TYPE_RESET:
     ret = -1;
     break;
   default:
@@ -748,7 +748,7 @@ int proxy_start(const char * port) {
   gtimer_close(timer);
 
   if (adapter != NULL) {
-      adapter_send(adapter, E_TYPE_RESET, NULL, 0);
+      gadapter_send(adapter, GA_TYPE_RESET, NULL, 0);
       usleep(10000); // leave time for the reset packet to be sent
       adapter_close(adapter);
   }

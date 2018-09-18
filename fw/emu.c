@@ -6,7 +6,7 @@
 #include "emu.h"
 
 #include <LUFA/Drivers/Peripheral/Serial.h>
-#include "../include/protocol.h"
+#include <gimxadapter/include/gadapter.h>
 
 #define MAX_CONTROL_TRANSFER_SIZE MAX_PACKET_VALUE_SIZE
 
@@ -17,12 +17,12 @@
  */
 static uint8_t control[MAX_CONTROL_TRANSFER_SIZE];
 
-static s_endpointPacket input;
+static s_ga_endpointPacket input;
 static uint8_t inputDataLen;
 
-static uint8_t descriptors[MAX_DESCRIPTORS_SIZE];
-static s_descriptorIndex descIndex[MAX_DESCRIPTORS];
-static s_endpointConfig endpoints[MAX_ENDPOINTS];
+static uint8_t descriptors[GA_MAX_DESCRIPTORS_SIZE];
+static s_ga_descriptorIndex descIndex[GA_MAX_DESCRIPTORS];
+static s_ga_endpointConfig endpoints[GA_MAX_ENDPOINTS];
 
 /*
  * Only used in the serial interrupt.
@@ -33,7 +33,7 @@ static uint8_t * pindex = (uint8_t *)descIndex;
 /*
  * Only used in the main.
  */
-static uint8_t outEndpoints[MAX_ENDPOINTS];
+static uint8_t outEndpoints[GA_MAX_ENDPOINTS];
 static uint8_t selectedOutEndpoint = 0;
 static uint8_t outEndpointNumber = 0;
 
@@ -65,7 +65,7 @@ static inline void send_control_header(void) {
     if( !(USB_ControlRequest.bmRequestType & REQDIR_DEVICETOHOST) ) {
         len += USB_ControlRequest.wLength;
     }
-    Serial_SendByte(E_TYPE_CONTROL);
+    Serial_SendByte(GA_TYPE_CONTROL);
     Serial_SendByte(len);
     Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
 }
@@ -83,7 +83,7 @@ static inline void send_control_header(void) {
 
 static inline void ack(const uint8_t type) {
     Serial_SendByte(type);
-    Serial_SendByte(BYTE_LEN_0_BYTE);
+    Serial_SendByte(0);
 }
 
 
@@ -92,21 +92,21 @@ ISR(USART1_RX_vect) {
     uint8_t packet_type = UDR1;
     uint8_t value_len = Serial_BlockingReceiveByte();
     static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_control_stall, &&l_in };
-    if(packet_type > E_TYPE_IN) {
+    if(packet_type > GA_TYPE_IN) {
         return;
     }
     goto *labels[packet_type];
     l_descriptors:
     READ_VALUE_INC(pdesc)
-    ack(E_TYPE_DESCRIPTORS);
+    ack(GA_TYPE_DESCRIPTORS);
     return;
     l_index:
     READ_VALUE_INC(pindex)
-    ack(E_TYPE_INDEX);
+    ack(GA_TYPE_INDEX);
     return;
     l_endpoints:
     READ_VALUE((uint8_t*)&endpoints)
-    ack(E_TYPE_ENDPOINTS);
+    ack(GA_TYPE_ENDPOINTS);
     started = 1;
     return;
     l_reset:
@@ -130,7 +130,7 @@ ISR(USART1_RX_vect) {
 
 void serial_init(void) {
 
-    Serial_Init(USART_BAUDRATE, USART_DOUBLE_SPEED);
+    Serial_Init(GA_USART_BAUDRATE, USART_DOUBLE_SPEED);
 
     UCSR1B |= (1 << RXCIE1); // Enable the USART Receive Complete interrupt (USART_RXC)
 }
@@ -200,7 +200,7 @@ bool EVENT_USB_Device_ControlRequest(void) {
 bool EVENT_USB_Device_UnhandledControlRequest(void) {
 
     if (USB_ControlRequest.wLength > MAX_CONTROL_TRANSFER_SIZE) {
-        Serial_SendByte(E_TYPE_DEBUG);
+        Serial_SendByte(GA_TYPE_DEBUG);
         Serial_SendByte(sizeof(USB_ControlRequest));
         Serial_SendData(&USB_ControlRequest, sizeof(USB_ControlRequest));
         return false;
@@ -263,7 +263,7 @@ void SendNextInput(void) {
 
             input.endpoint = 0;
 
-            ack(E_TYPE_IN);
+            ack(GA_TYPE_IN);
         }
     }
 }
@@ -277,10 +277,10 @@ void ReceiveNextOutput(void) {
                 uint8_t type;
                 uint8_t length;
             } header;
-            s_endpointPacket value;
-        } packet = { .header.type = E_TYPE_OUT };
+            s_ga_endpointPacket value;
+        } packet = { .header.type = GA_TYPE_OUT };
 
-        s_endpointConfig * endpoint = endpoints + outEndpoints[selectedOutEndpoint++];
+        s_ga_endpointConfig * endpoint = endpoints + outEndpoints[selectedOutEndpoint++];
         if (selectedOutEndpoint == outEndpointNumber) {
             selectedOutEndpoint = 0;
         }

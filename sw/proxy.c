@@ -541,6 +541,14 @@ static int send_control_packet(s_packet * packet) {
     }
   }
 
+  if (setup->bRequestType == USB_DIR_IN
+      && setup->bRequest == USB_REQ_GET_DESCRIPTOR
+      && (setup->wValue >> 8) == USB_DT_DEVICE_QUALIFIER) {
+    // device qualifier descriptor is for high speed devices
+    printf("force stall for get device qualifier\n");
+    return adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+  }
+
   return gusb_write(usb, 0, packet->value, packet->header.length);
 }
 
@@ -605,7 +613,7 @@ static int process_packet(int user, s_packet * packet)
     {
       struct timeval tv;
       gettimeofday(&tv, NULL);
-          fprintf(stderr, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
+      fprintf(stderr, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
       fprintf(stderr, "unhandled packet (type=0x%02x)\n", type);
     }
     break;

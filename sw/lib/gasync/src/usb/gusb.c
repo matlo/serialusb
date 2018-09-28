@@ -570,10 +570,7 @@ static int probe_interface (int device, unsigned char configurationIndex, struct
   ++pInterface->bNumAltInterfaces;
 
   if (interface->iInterface) {
-    int ret = get_string_descriptor (device, interface->iInterface);
-    if (ret < 0) {
-      return -1;
-    }
+    get_string_descriptor (device, interface->iInterface);
   }
 
   return 0;
@@ -692,10 +689,7 @@ static int probe_configurations (int device) {
     }
   
     if (configuration->iConfiguration) {
-      ret = get_string_descriptor (device, configuration->iConfiguration);
-      if (ret < 0) {
-        return -1;
-      }
+      get_string_descriptor (device, configuration->iConfiguration);
     }
     
     ptr += configuration->bLength;
@@ -758,24 +752,15 @@ static int get_device (int device) {
   }
   
   if (descriptor->iManufacturer) {
-    ret = get_string_descriptor (device, descriptor->iManufacturer);
-    if (ret < 0) {
-      return -1;
-    }
+    get_string_descriptor (device, descriptor->iManufacturer);
   }
   
   if (descriptor->iProduct) {
-    ret = get_string_descriptor (device, descriptor->iProduct);
-    if (ret < 0) {
-      return -1;
-    }
+    get_string_descriptor (device, descriptor->iProduct);
   }
   
   if (descriptor->iSerialNumber) {
-    ret = get_string_descriptor (device, descriptor->iSerialNumber);
-    if (ret < 0) {
-      return -1;
-    }
+    get_string_descriptor (device, descriptor->iSerialNumber);
   }
 
   return 0;
@@ -1205,25 +1190,27 @@ int gusb_close(int device) {
   }
 
   free(usbdevices[device].path);
-  unsigned char configurationIndex;
-  for (configurationIndex = 0; configurationIndex < usbdevices[device].descriptors.device.bNumConfigurations; ++configurationIndex) {
-    struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
-    if (pConfiguration->descriptor != NULL) {
-      unsigned char interfaceIndex;
-      for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
-        struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
-        unsigned char altInterfaceIndex;
-        for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
-          struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
-          free(pAltInterface->endpoints);
+  if (usbdevices[device].descriptors.configurations != NULL) {
+    unsigned char configurationIndex;
+    for (configurationIndex = 0; configurationIndex < usbdevices[device].descriptors.device.bNumConfigurations; ++configurationIndex) {
+      struct p_configuration * pConfiguration = usbdevices[device].descriptors.configurations + configurationIndex;
+      if (pConfiguration->descriptor != NULL) {
+        unsigned char interfaceIndex;
+        for (interfaceIndex = 0; interfaceIndex < pConfiguration->descriptor->bNumInterfaces; ++interfaceIndex) {
+          struct p_interface * pInterface = pConfiguration->interfaces + interfaceIndex;
+          unsigned char altInterfaceIndex;
+          for (altInterfaceIndex = 0; altInterfaceIndex < pInterface->bNumAltInterfaces; ++altInterfaceIndex) {
+            struct p_altInterface * pAltInterface = pInterface->altInterfaces + altInterfaceIndex;
+            free(pAltInterface->endpoints);
+          }
+          free(pInterface->altInterfaces);
         }
-        free(pInterface->altInterfaces);
+        free(pConfiguration->interfaces);
       }
-      free(pConfiguration->interfaces);
+      free(pConfiguration->raw);
     }
-    free(pConfiguration->raw);
+    free(usbdevices[device].descriptors.configurations);
   }
-  free(usbdevices[device].descriptors.configurations);
   unsigned int othersIndex;
   for (othersIndex = 0; othersIndex < usbdevices[device].descriptors.nbOthers; ++othersIndex) {
     free(usbdevices[device].descriptors.others[othersIndex].data);

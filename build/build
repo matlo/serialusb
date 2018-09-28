@@ -15,7 +15,7 @@ YEAR=`date +"%Y"`
 BRANCH="master"
 
 usage() {
-  echo "usage: ./build <major.minor> <ubuntu, debian, raspbian> <xenial, jessie, stretch> <amd64, i386, armhf>"
+  echo "usage: ./build <major.minor> <ubuntu, debian, raspbian> <bionic, jessie, stretch> <amd64, i386, armhf>"
 }
 
 echo "Version number: "${VERSION}

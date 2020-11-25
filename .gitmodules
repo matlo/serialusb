@@ -22,3 +22,6 @@
 [submodule "sw/lib/gimxadapter"]
 	path = sw/lib/gimxadapter
 	url = https://github.com/matlo/gimxadapter.git
+[submodule "sw/lib/gimxtime"]
+	path = sw/lib/gimxtime
+	url = https://github.com/matlo/gimxtime.git

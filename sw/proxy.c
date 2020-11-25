@@ -4,8 +4,7 @@
  */
 
 #include <gimxusb/include/gusb.h>
-#include <protocol.h>
-#include <adapter.h>
+#include <gimxadapter/include/gadapter.h>
 #include <allocator.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,16 +39,16 @@ GLOG_INST(proxy)
 #define PRINT_TRANSFER_READ_ERROR(ENDPOINT,MESSAGE) fprintf(stderr, "%s:%d %s: read transfer failed on endpoint %hhu with error: %s\n", __FILE__, __LINE__, __func__, ENDPOINT & USB_ENDPOINT_NUMBER_MASK, MESSAGE);
 
 static struct gusb_device * usb = NULL;
-static struct adapter_device * adapter= NULL;
+static struct gadapter_device * adapter= NULL;
 static struct gtimer * init_timer = NULL;
 
 static s_usb_descriptors descriptors;
-static unsigned char desc[MAX_DESCRIPTORS_SIZE] = {};
+static unsigned char desc[GA_MAX_DESCRIPTORS_SIZE] = {};
 static unsigned char * pDesc = desc;
-static s_descriptorIndex descIndex[MAX_DESCRIPTORS] = {};
-static s_descriptorIndex * pDescIndex = descIndex;
-static s_endpointConfig endpoints[MAX_ENDPOINTS] = {};
-static s_endpointConfig * pEndpoints = endpoints;
+static s_ga_descriptorIndex descIndex[GA_MAX_DESCRIPTORS] = {};
+static s_ga_descriptorIndex * pDescIndex = descIndex;
+static s_ga_endpointConfig endpoints[GA_MAX_ENDPOINTS] = {};
+static s_ga_endpointConfig * pEndpoints = endpoints;
 
 static uint8_t descIndexSent = 0;
 static uint8_t endpointsSent = 0;
@@ -60,10 +59,10 @@ static s_endpoint_map endpointMap = { {}, {}, {} };
 
 static struct {
   uint16_t length;
-  s_endpointPacket packet;
+  s_ga_endpointPacket packet;
 } inPackets[ENDPOINT_MAX_NUMBER] = {};
 
-static uint8_t inEpFifo[MAX_ENDPOINTS] = {};
+static uint8_t inEpFifo[GA_MAX_ENDPOINTS] = {};
 static uint8_t nbInEpFifo = 0;
 
 static volatile int done;
@@ -128,13 +127,16 @@ static int queue_in_packet(unsigned char endpoint, const void * buf, int transfe
 int usb_read_callback(void * user __attribute__((unused)), unsigned char endpoint, const void * buf, int status) {
 
   switch (status) {
-  case E_TRANSFER_TIMED_OUT:
+  case E_STATUS_TRANSFER_TIMED_OUT:
     PRINT_TRANSFER_READ_ERROR(endpoint, "TIMEOUT")
     break;
-  case E_TRANSFER_STALL:
+  case E_STATUS_TRANSFER_STALL:
     break;
-  case E_TRANSFER_ERROR:
+  case E_STATUS_TRANSFER_ERROR:
     PRINT_TRANSFER_WRITE_ERROR(endpoint, "OTHER ERROR")
+    return -1;
+  case E_STATUS_NO_DEVICE:
+    PRINT_TRANSFER_WRITE_ERROR(endpoint, "NO DEVICE")
     return -1;
   default:
     break;
@@ -163,7 +165,7 @@ int usb_read_callback(void * user __attribute__((unused)), unsigned char endpoin
   } else {
     if (status >= 0) {
       if (adapter != NULL) {
-        if (status > MAX_PAYLOAD_SIZE_EP) {
+        if (status > GA_MAX_PAYLOAD_SIZE_EP) {
           PRINT_ERROR_OTHER("too many bytes transfered")
           done = 1;
           return -1;
@@ -202,10 +204,10 @@ static int source_poll_all_endpoints() {
 int source_write_callback(void * user __attribute__((unused)), unsigned char endpoint, int status) {
 
   switch (status) {
-  case E_TRANSFER_TIMED_OUT:
+  case E_STATUS_TRANSFER_TIMED_OUT:
     PRINT_TRANSFER_WRITE_ERROR(endpoint, "TIMEOUT")
     break;
-  case E_TRANSFER_STALL:
+  case E_STATUS_TRANSFER_STALL:
     if (endpoint == 0) {
       if (adapter != NULL) {
         int ret = gadapter_send(adapter, GA_TYPE_CONTROL_STALL, NULL, 0);
@@ -216,8 +218,11 @@ int source_write_callback(void * user __attribute__((unused)), unsigned char end
       }
     }
     break;
-  case E_TRANSFER_ERROR:
+  case E_STATUS_TRANSFER_ERROR:
     PRINT_TRANSFER_WRITE_ERROR(endpoint, "OTHER ERROR")
+    return -1;
+  case E_STATUS_NO_DEVICE:
+    PRINT_TRANSFER_WRITE_ERROR(endpoint, "NO DEVICE")
     return -1;
   default:
     if (endpoint == 0) {
@@ -408,9 +413,9 @@ static int fix_configuration(unsigned char configurationIndex) {
 
 static int add_descriptor(uint16_t wValue, uint16_t wIndex, uint16_t wLength, void * data) {
 
-  if (pDesc + wLength > desc + MAX_DESCRIPTORS_SIZE || pDescIndex >= descIndex + MAX_DESCRIPTORS) {
+  if (pDesc + wLength > desc + GA_MAX_DESCRIPTORS_SIZE || pDescIndex >= descIndex + GA_MAX_DESCRIPTORS) {
     fprintf(stderr, "%s:%d %s: unable to add descriptor wValue=0x%04x wIndex=0x%04x wLength=%u (available=%u)\n",
-        __FILE__, __LINE__, __func__, wValue, wIndex, wLength, (unsigned int)(MAX_DESCRIPTORS_SIZE - (pDesc - desc)));
+        __FILE__, __LINE__, __func__, wValue, wIndex, wLength, (unsigned int)(GA_MAX_DESCRIPTORS_SIZE - (pDesc - desc)));
     return -1;
   }
 
@@ -514,7 +519,7 @@ static int source_send_control_transfer(struct usb_ctrlrequest * setup, unsigned
       && (setup->wValue >> 8) == USB_DT_DEVICE_QUALIFIER) {
     // device qualifier descriptor is for high speed devices
     printf("force stall for get device qualifier\n");
-    return adapter_send(adapter, E_TYPE_CONTROL_STALL, NULL, 0);
+    return gadapter_send(adapter, GA_TYPE_CONTROL_STALL, NULL, 0);
   }
 
   return gusb_write(usb, 0, setup, length);
@@ -532,7 +537,7 @@ static void dump(unsigned char * data, unsigned char length)
   printf("\n");
 }
 
-static int process_packet(void * user __attribute__((unused)), s_packet * packet)
+static int process_packet(void * user __attribute__((unused)), s_ga_packet * packet)
 {
   unsigned char type = packet->header.type;
 
@@ -562,7 +567,7 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
     break;
   case GA_TYPE_OUT:
     {
-      s_endpointPacket * epPacket = (s_endpointPacket *)packet->value;
+        s_ga_endpointPacket * epPacket = (s_ga_endpointPacket *)packet->value;
       ret = source_send_out_transfer(epPacket->endpoint, epPacket->data, packet->header.length - 1);
     }
     break;
@@ -601,8 +606,6 @@ static int process_packet(void * user __attribute__((unused)), s_packet * packet
 }
 
 int proxy_init() {
-
-  gusb_init();
 
   char * path = source_select();
 
@@ -663,13 +666,6 @@ static int timer_read(void * user __attribute__((unused))) {
 
 int proxy_start(const char * port) {
 
-  int ret = gprio();
-  if (ret < 0)
-  {
-    PRINT_ERROR_OTHER("Failed to set process priority!")
-    return -1;
-  }
-
   if (port != NULL) {
 
       printf("Target capabilities:\n");
@@ -688,7 +684,7 @@ int proxy_start(const char * port) {
         return -1;
       }
 
-      ADAPTER_CALLBACKS callbacks = {
+      GADAPTER_CALLBACKS callbacks = {
               .fp_read = process_packet,
               .fp_write = adapter_send_callback,
               .fp_close = adapter_close_callback,
@@ -725,7 +721,7 @@ int proxy_start(const char * port) {
       .fp_register = gpoll_register_fd,
       .fp_remove = gpoll_remove_fd
   };
-  ret = gusb_register(usb, 0, &usb_callbacks);
+  int ret = gusb_register(usb, 0, &usb_callbacks);
   if (ret < 0) {
     return -1;
   }
@@ -741,21 +737,26 @@ int proxy_start(const char * port) {
     return -1;
   }
 
+  if (gprio_init() < 0) {
+    PRINT_ERROR_OTHER("Failed to set process priority!")
+    return -1;
+  }
+
   while (!done) {
     gpoll();
   }
+
+  gprio_clean();
 
   gtimer_close(timer);
 
   if (adapter != NULL) {
       gadapter_send(adapter, GA_TYPE_RESET, NULL, 0);
       usleep(10000); // leave time for the reset packet to be sent
-      adapter_close(adapter);
+      gadapter_close(adapter);
   }
 
   gusb_close(usb);
-
-  gusb_exit();
 
   if (init_timer != NULL) {
     PRINT_ERROR_OTHER("Failed to start the proxy: initialization timeout expired!")

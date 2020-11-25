@@ -1,4 +1,4 @@
 CFLAGS += -Wall -Wextra -O3 # -g -O0 -fno-omit-frame-pointer
-LDFLAGS += -Llib/gimxlog -Llib/gimxpoll -Llib/gimxserial -Llib/gimxprio -Llib/gimxtimer -Llib/gimxusb
-LDLIBS += -lgimxlog -lgimxpoll -lgimxserial -lgimxprio -lgimxtimer -lgimxusb -lusb-1.0 -ludev
+LDFLAGS += -Llib/gimxlog -Llib/gimxpoll -Llib/gimxserial -Llib/gimxprio -Llib/gimxtimer -Llib/gimxusb -Llib/gimxadapter
+LDLIBS += -lgimxlog -lgimxpoll -lgimxserial -lgimxprio -lgimxtimer -lgimxusb -lgimxadapter -lusb-1.0 -ludev
 CPPFLAGS+=-I../include -Iinclude -Ilib

@@ -8,7 +8,7 @@ SCRIPTS=serialusb-capture.sh
 
 OBJECTS := $(patsubst %.c,%.o,$(shell find . -name "*.c" -not -path "./test/*" -not -path "./lib/*"))
 
-DIRS = lib/gimxlog lib/gimxpoll lib/gimxprio lib/gimxserial lib/gimxtimer lib/gimxusb
+DIRS = lib/gimxlog lib/gimxpoll lib/gimxprio lib/gimxserial lib/gimxtimer lib/gimxusb lib/gimxadapter
 
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)
@@ -27,6 +27,7 @@ build-lib/gimxusb: build-lib/gimxlog
 ifeq ($(OS),Windows_NT)
 build-lib/gimxusb: build-lib/gimxlog build-lib/gimxtimer build-lib/gimxpoll
 endif
+build-lib/gimxadapter: build-lib/gimxlog build-lib/gimxserial
 
 $(DIRS): $(BUILDDIRS)
 

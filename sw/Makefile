@@ -6,7 +6,7 @@ bindir=$(prefix)/bin
 BINS=serialusb
 SCRIPTS=serialusb-capture.sh
 
-OBJECTS := $(patsubst %.c,%.o,$(shell find . -name "*.c" -not -path "./test/*" -not -path "./lib/*"))
+OBJECTS := $(patsubst %.c,%.o,$(shell find src -name "*.c"))
 
 DIRS = lib/gimxlog lib/gimxpoll lib/gimxprio lib/gimxserial lib/gimxtimer lib/gimxusb lib/gimxadapter
 
